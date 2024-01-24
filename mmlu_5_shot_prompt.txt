@@ -1,0 +1,42 @@
+Davis decided to kill Adams. He set out for Adams's house. Before he got there he saw Brooks, who resembled Adams. Thinking that Brooks was Adams, Davis shot at Brooks. The shot missed Brooks but wounded Case, who was some distance away. Davis had not seen Case. In a prosecution under a statute that proscribes any attempt to commit murder, the district attorney should indicate that the intended victim(s) was/were
+0: Adams only
+1: Brooks only
+2: Case only
+3: Adams and Brooks
+
+Answer: 1 Brooks only
+
+A state statute requires any person licensed to sell prescription drugs to file with the State Board of Health a report listing the types and amounts of such drugs sold if his or her sales of such drugs exceed $50,000 during a calendar year. The statute makes it a misdemeanor to "knowingly fail to file" such a report. Nelson, who is licensed to sell prescription drugs, sold $63,000 worth of prescription drugs during 1976 but did not file the report. Charged with committing the misdemeanor, Nelson testifies that he did a very poor job of keeping records and did not realize that his sales of prescription drugs had exceeded $50,000. If the jury believes Nelson, he should be found 
+0: guilty, because this is a public welfare offense.
+1: guilty, because he cannot be excused on the basis of his own failure to keep proper records.
+2: not guilty, because the statute punishes omissions and he was not given fair warning of his duty to act.
+3: not guilty, because he was not aware of the value of the drugs he had sold
+
+Answer: 3 not guilty, because he was not aware of the value of the drugs he had sold
+
+Lender met Borrower on the street, demanded that Borrower pay a debt owed to Lender, and threatened to punch Borrower in the nose. A fight ensued between them. Mann came upon the scene just as Lender was about to kick Borrower in the head. Noting that Lender was getting the better of the fight, Mann pointed a gun at Lender and said, "Stop, or I'll shoot." If Lender asserts a claim against Mann based on assault, will Lender prevail?
+0: Yes, because Mann threatened to use deadly force.
+1: Yes, unless Mann was related to Borrower.
+2: No, if it was apparent that Lender was about to inflict serious bodily harm upon Borrower.
+3: No, because Lender was the original aggressor by threatening Borrower with a battery
+
+Answer: 2 No, if it was apparent that Lender was about to inflict serious bodily harm upon Borrower.
+
+Peter sued Don for breach of contract. The court admitted testimony by Peter that Don and his wife quarreled frequently, a fact of no consequence to the lawsuit. Don seeks to testify in response that he and his wife never quarreled. The court
+
+0: must permit Don to answer if he had objected to Peter's testimony.
+1: may permit Don to answer, whether or not he had objected to Peter's testimony.
+2: may permit Don to answer only if he had objected to Peter's testimony.
+3: cannot permit Don to answer, whether or not he had objected to Peter's testimony
+
+Answer: 1 may permit Don to answer, whether or not he had objected to Peter's testimony.
+
+Ames had painted Bell's house under a contract which called for payment of $2,000. Bell, contending in good faith that the porch had not been painted properly, refused to pay anything. On June 15, Ames mailed a letter to Bell stating, "I am in serious need of money. Please send the $2,000 to me before July 1." On June 18, Bell replied, "I will settle for $1,800 provided that you agree to repaint the porch." Ames did not reply to this letter. Thereafter Bell mailed a check for $1,800 marked "Payment in full on the Ames-Bell painting contract as per letter dated June 18." Ames received the check on June 30. Because he was badly in need of money, check on June 30. Because he was badly in need of money, Questions Ames cashed the check without objection and spent the proceeds but has refused to repaint the porch.Bell's refusal to pay anything to Ames when he finished painting was a
+
+0: partial breach of contract only if Ames had properly or substantially painted the porch.
+1: partial breach of contract whether or not Ames had properly or substantially painted the porch.
+2: total breach of contract only if Ames had properly or substantially painted the porch.
+3: total breach of contract whether or not Ames had properly or substantially painted the porch
+
+Answer: 2 total breach of contract only if Ames had properly or substantially painted the porch.
+
