@@ -3,4 +3,6 @@ sentencepiece
 torch>=2.1.0
 xformers
 simple-parsing
+scikit-learn
+evaluate
 datasets
