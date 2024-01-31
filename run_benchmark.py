@@ -77,7 +77,7 @@ def mmlu(model_path: str, max_tokens: int = 35, temperature: float = 0.7):
     result = accuracy_metric.compute(references=ground_truths, predictions=predictions)
     res_acc = result["accuracy"]
     print("---------------------------ACCURACY------------------------------------")
-    print(f"accuracy for high school geography test set: {res_acc}")
+    print(f"Accuracy for MMLU test set: {res_acc}")
     return res_acc
 
 
