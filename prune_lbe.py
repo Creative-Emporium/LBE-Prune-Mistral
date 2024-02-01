@@ -4,6 +4,7 @@ from pathlib import Path
 
 import torch
 import wandb
+import numpy as np
 
 from mistral.cache import RotatingBufferCache
 from mistral.model import Transformer
@@ -43,22 +44,23 @@ def get_mistral_activations(model_path: str, max_tokens: int = 35, temperature: 
     print(f"length of activation dict: {len(activations)}")
     for index, activation in activations.items():
         assert(activation is not None)
-        print(f"activation tensor size of index {index}: {activation.size()}")
+        #print(f"activation tensor size of index {index}: {activation.size()}")
     
     return activations, transformer
     
     
-def batch_entropy(x):
+def token_wise_entropy(x):
     """ Estimate the differential entropy by assuming a gaussian distribution of
         values for different samples of a mini-batch.
     """
-    if(x.shape[0] <= 1):
-        raise Exception("The batch entropy can only be calculated for |batch| > 1.")
+    #if(x.shape[0] <= 1):
+    #    raise Exception("The batch entropy can only be calculated for |batch| > 1.")
 
-    x = torch.flatten(x, start_dim=1)
+    x = torch.flatten(x, start_dim=0)
     x_std = torch.std(x, dim=0)
     entropies = 0.5 * torch.log(np.pi * np.e * x_std**2 + 1)
-    return torch.mean(entropies)
+    #return torch.mean(entropies)
+    return entropies
     
 def compute_lbe(activations: dict):
     """computes Layerwise Batch Entropy from model activations.
@@ -67,8 +69,8 @@ def compute_lbe(activations: dict):
     """
     lbe = {}
     for index, activation in activations.items():
-        print(f"size of activation: {activation.shape()}")
-        lbe[index] = batch_entropy(activation)
+        lbe[index] = token_wise_entropy(activation)
+        print(f"lbe at index {index}: {lbe[index]}")
     
     return lbe
 
@@ -76,7 +78,7 @@ def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
     activations, transformer = get_mistral_activations(model_path=model_path)
-    #lbe = compute_lbe(activations)
+    lbe = compute_lbe(activations)
     #wandb_run.log(lbe)
 
 
