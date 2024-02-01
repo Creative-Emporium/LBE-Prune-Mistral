@@ -6,3 +6,4 @@ simple-parsing
 scikit-learn
 evaluate
 datasets
+wandb
