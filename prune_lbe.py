@@ -3,6 +3,7 @@ import fire
 from pathlib import Path
 
 import torch
+import wandb
 
 from mistral.cache import RotatingBufferCache
 from mistral.model import Transformer
@@ -17,9 +18,8 @@ def get_mistral_activations(model_path: str, max_tokens: int = 35, temperature: 
     activations = {}
     def get_activation(index: str):
 
-        def hook(model, input, output):
+        def hook(module, input, output):
             activations[index] = output.detach()
-        
         return hook
 
         
@@ -28,7 +28,7 @@ def get_mistral_activations(model_path: str, max_tokens: int = 35, temperature: 
 
     hook_handles = [] # list of hooks handles for cleanup
     for index, layer in transformer.layers.items():
-        handle = layer.register_forward_hook(get_activation(index))
+        handle = layer.attention.wo.register_forward_hook(get_activation(index))
         hook_handles.append(handle)
     
 
@@ -39,8 +39,11 @@ def get_mistral_activations(model_path: str, max_tokens: int = 35, temperature: 
     print(f"Answer of Mistral: {result}")
     for handle in hook_handles:# cleanup handles
         handle.remove() 
+    
+    print(f"length of activation dict: {len(activations)}")
     for index, activation in activations.items():
         assert(activation is not None)
+        print(f"activation tensor size of index {index}: {activation.size()}")
     
     return activations, transformer
     
@@ -64,16 +67,26 @@ def compute_lbe(activations: dict):
     """
     lbe = {}
     for index, activation in activations.items():
+        print(f"size of activation: {activation.shape()}")
         lbe[index] = batch_entropy(activation)
     
     return lbe
 
+def main(model_path: str):
+    #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
+    
+    activations, transformer = get_mistral_activations(model_path=model_path)
+    #lbe = compute_lbe(activations)
+    #wandb_run.log(lbe)
 
 
 
 
 
-if __name__ == __main__:
-    fire.Fire(
 
+
+if __name__ == "__main__":
+    fire.Fire({
+        "prune": main
+    }
     )
