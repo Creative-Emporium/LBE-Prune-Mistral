@@ -13,7 +13,7 @@ from main import generate
 
 
 
-def get_mistral_activations(model_path: str, max_tokens: int = 35, temperature: float = 0.7):
+def get_mistral_activations(model_path: str, max_tokens: int = 40, temperature: float = 0.7):
 
     # helper method to attach forward hook to layer; returns hook method
         
@@ -25,7 +25,7 @@ def get_mistral_activations(model_path: str, max_tokens: int = 35, temperature: 
 
         def hook(module, input, output):
             activations[index].append(output.detach())
-            print(f"activation at module {module}: {output.detach().size()}")
+            #print(f"activation at module {module}: {output.detach().size()}")
         return hook
 
     hook_handles = [] # list of hooks handles for cleanup
@@ -51,6 +51,9 @@ def get_mistral_activations(model_path: str, max_tokens: int = 35, temperature: 
     #print(f"length of activation dict: {len(activations)}")
     for index, activation in activations.items():
         assert(activation is not None)
+        print(f"---------------------- layer {index} ---------------------------------")
+        for index_t, tensor in enumerate(activation):
+            print(f"activation size of token {index_t}: {tensor.size()}")
         #print(f"activation tensor size of index {index}: {activation.size()}")
     
     return activations, transformer
