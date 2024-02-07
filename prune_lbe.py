@@ -3,6 +3,7 @@ import fire
 from pathlib import Path
 
 import torch
+from torch import nn
 import wandb
 import numpy as np
 
@@ -13,7 +14,7 @@ from main import generate
 
 
 
-def get_mistral_activations(model_path: str, max_tokens: int = 40, temperature: float = 0.7):
+def get_mistral_activations(model_path: str, prompt: str, max_tokens: int = 40, temperature: float = 0.7):
 
     # helper method to attach forward hook to layer; returns hook method
         
@@ -34,29 +35,30 @@ def get_mistral_activations(model_path: str, max_tokens: int = 40, temperature: 
         hook_handles.append(handle)
     
 
-    prompt = "[INST] what is the capital of France? [/INST]"
     
     result, _logprobs = generate([prompt], transformer, tokenizer, max_tokens = max_tokens, temperature = temperature)
     
-    tokens_of_response = tokenizer.encode(result[0]) # apply tokenizer to each word of response
-    print(f"length of response after tokenizing: {len(tokens_of_response)}")
+    tokens_of_query = tokenizer.encode(prompt) # apply tokenizer to each word of response
+    query_length = len(tokens_of_query)
+    print(f"length of query after tokenizing: {query_length}")
     
     print(f"Answer of Mistral: {result}")
     for handle in hook_handles:# cleanup handles
         handle.remove() 
     
-    #for layer_index, activation_list in activations.items():
-    #    activations[layer_index] = torch.stack(activation_list)
     
-    #print(f"length of activation dict: {len(activations)}")
     for index, activation in activations.items():
         assert(activation is not None)
         print(f"---------------------- layer {index} ---------------------------------")
+        query_tensor = activation.pop(0) # first tensor contains query passed to LLM
+        assert(query_tensor.size() == torch.Size([query_length, 4096])) #assert that we popped the correct tensor
         for index_t, tensor in enumerate(activation):
             print(f"activation size of token {index_t}: {tensor.size()}")
-        #print(f"activation tensor size of index {index}: {activation.size()}")
     
-    return activations, transformer
+    for layer_index, activation_list in activations.items():
+        activations[layer_index] = torch.stack(activation_list)
+
+    return activations, transformer, tokenizer
     
     
 def token_wise_entropy(x):
@@ -65,32 +67,52 @@ def token_wise_entropy(x):
     """
     #if(x.shape[0] <= 1):
     #    raise Exception("The batch entropy can only be calculated for |batch| > 1.")
-
-    x = torch.flatten(x, start_dim=0)
+    #print(f"shape before flatten {x.size()}")
+    x = torch.flatten(x, start_dim=0, end_dim=1)
+    #print(f"shape after flatten {x.size()}")
     x_std = torch.std(x, dim=0)
     entropies = 0.5 * torch.log(np.pi * np.e * x_std**2 + 1)
-    #return torch.mean(entropies)
+    return torch.mean(entropies)
     return entropies
     
-def compute_lbe(activations: dict):
-    """computes Layerwise Batch Entropy from model activations.
+def compute_lte(activations: dict):
+    """computes Layerwise Token Entropy from model activations.
     takes dict with layer index as index and layer activations as value as parameter
     returns: dict with layer index as index and layerwise batch entropy at that layer index as value
     """
-    lbe = {}
+    lte = {}
     for index, activation in activations.items():
-        lbe[index] = token_wise_entropy(activation)
-        #print(f"lbe at index {index}: {lbe[index]}")
+        lte[index] = token_wise_entropy(activation)
+        print(f"lte at index {index}: {lte[index]}")
     
-    return lbe
+    return lte
+
+def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0001):
+    layers_to_be_pruned = []
+    for index, token_entropy in lte.items():
+        if token_entropy < threshold:
+            layers_to_be_pruned.append(index)
+    
+    print(f"layers to be pruned {layers_to_be_pruned}")
+    for index in layers_to_be_pruned:
+        if index == 0:
+            continue
+        print(f"pruned layer {index}")
+        transformer.layers.pop(str(index))
+    
+    return transformer
+
+
 
 def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
-    activations, transformer = get_mistral_activations(model_path=model_path)
-    print(f"shape of activations 0: {len(activations[0])}")
-    print(f"shape of activations 1: {len(activations[15])}")
-    lbe = compute_lbe(activations)
+    prompt = "[INST] what is the capital of France? [/INST]"
+    activations, transformer, tokenizer = get_mistral_activations(model_path=model_path, prompt=prompt)
+    lte = compute_lte(activations)
+    new_transformer = prune_lte(lte=lte, transformer=transformer) 
+    result, logits = generate(prompts=[prompt], model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.7)
+    print(f"result after pruning: \n {result[0]}")
     #wandb_run.log(lbe)
 
 
