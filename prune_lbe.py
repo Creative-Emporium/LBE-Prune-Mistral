@@ -63,17 +63,17 @@ def get_mistral_activations(model_path: str, prompt: str, max_tokens: int = 40, 
     
 def token_wise_entropy(x):
     """ Estimate the differential entropy by assuming a gaussian distribution of
-        values for different samples of a mini-batch.
+        values for different samples of a set of token activations.
     """
     #if(x.shape[0] <= 1):
     #    raise Exception("The batch entropy can only be calculated for |batch| > 1.")
     #print(f"shape before flatten {x.size()}")
     x = torch.flatten(x, start_dim=0, end_dim=1)
     #print(f"shape after flatten {x.size()}")
-    x_std = torch.std(x, dim=0)
+    x_std = torch.std(x, dim=1)
+    #print(f"shape of std: {x_std.size()}")
     entropies = 0.5 * torch.log(np.pi * np.e * x_std**2 + 1)
     return torch.mean(entropies)
-    return entropies
     
 def compute_lte(activations: dict):
     """computes Layerwise Token Entropy from model activations.
