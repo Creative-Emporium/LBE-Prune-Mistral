@@ -14,7 +14,7 @@ from main import generate
 
 
 
-def get_mistral_activations(model_path: str, prompt: str, max_tokens: int = 40, temperature: float = 0.7):
+def get_mistral_activations(model_path: str, prompt: str, max_tokens: int = 40, temperature: float = 0.0):
 
     # helper method to attach forward hook to layer; returns hook method
         
@@ -49,11 +49,11 @@ def get_mistral_activations(model_path: str, prompt: str, max_tokens: int = 40, 
     
     for index, activation in activations.items():
         assert(activation is not None)
-        print(f"---------------------- layer {index} ---------------------------------")
+        #print(f"---------------------- layer {index} ---------------------------------")
         query_tensor = activation.pop(0) # first tensor contains query passed to LLM
         assert(query_tensor.size() == torch.Size([query_length, 4096])) #assert that we popped the correct tensor
-        for index_t, tensor in enumerate(activation):
-            print(f"activation size of token {index_t}: {tensor.size()}")
+        #for index_t, tensor in enumerate(activation):
+            #print(f"activation size of token {index_t}: {tensor.size()}")
     
     for layer_index, activation_list in activations.items():
         activations[layer_index] = torch.stack(activation_list)
@@ -68,12 +68,13 @@ def token_wise_entropy(x):
     #if(x.shape[0] <= 1):
     #    raise Exception("The batch entropy can only be calculated for |batch| > 1.")
     #print(f"shape before flatten {x.size()}")
-    x = torch.flatten(x, start_dim=0, end_dim=1)
+    #x = torch.flatten(x, start_dim=0, end_dim=1)
+    x = torch.squeeze(x)
     #print(f"shape after flatten {x.size()}")
-    x_std = torch.std(x, dim=1)
+    x_std = torch.std(x, dim=0)
     #print(f"shape of std: {x_std.size()}")
     entropies = 0.5 * torch.log(np.pi * np.e * x_std**2 + 1)
-    return torch.mean(entropies)
+    return torch.max(entropies)
     
 def compute_lte(activations: dict):
     """computes Layerwise Token Entropy from model activations.
@@ -87,7 +88,7 @@ def compute_lte(activations: dict):
     
     return lte
 
-def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0001):
+def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0125):
     layers_to_be_pruned = []
     for index, token_entropy in lte.items():
         if token_entropy < threshold:
@@ -95,7 +96,7 @@ def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0001):
     
     print(f"layers to be pruned {layers_to_be_pruned}")
     for index in layers_to_be_pruned:
-        if index == 0:
+        if index < 3:
             continue
         print(f"pruned layer {index}")
         transformer.layers.pop(str(index))
@@ -107,11 +108,11 @@ def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0001):
 def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
-    prompt = "[INST] what is the capital of France? [/INST]"
+    prompt = "[INST] What year was albert Einstein born? [/INST]"
     activations, transformer, tokenizer = get_mistral_activations(model_path=model_path, prompt=prompt)
     lte = compute_lte(activations)
     new_transformer = prune_lte(lte=lte, transformer=transformer) 
-    result, logits = generate(prompts=[prompt], model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.7)
+    result, logits = generate(prompts=[prompt], model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
     print(f"result after pruning: \n {result[0]}")
     #wandb_run.log(lbe)
 
