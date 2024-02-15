@@ -26,17 +26,24 @@ def __construct_mmlu_prompt(data):
     prompt = f"{question} {answers} Answer: "
     return prompt
 
-def mmlu(model_path: str, max_tokens: int = 35, temperature: float = 0.7):
+def mmlu(model_path: str, trans:Transformer = None, tok: Tokenizer = None,  max_tokens: int = 40, temperature: float = 0.0):
     """run MMLU benchmark on mistral 7b
         param: model_path: path to downloaded model weights
+        
     """
-    subset_list = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology', 'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine', 'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics', 'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology', 'us_foreign_policy', 'virology', 'world_religions'] # mmlu topics; loop over them to run entire dataset
-
-    tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
-    transformer = Transformer.from_folder(Path(model_path), max_batch_size=3)
-
+    print(f"running mmlu benchmark with max_tokens {max_tokens} and temperature {temperature}")
+    if trans is None:
+        transformer = Transformer.from_folder(Path(model_path), max_batch_size=3)
+    else:
+        transformer = trans
+    if tok is None:
+        tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
+    else:
+        tokenizer = tok
     ground_truths = [] 
     predictions = []
+
+    subset_list = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology', 'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine', 'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics', 'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology', 'us_foreign_policy', 'virology', 'world_religions'] # mmlu topics; loop over them to run entire dataset
     for subset in subset_list:
          mmlu_dataset = datasets.load_dataset("Stevross/mmlu",subset, split="test")
          five_shot_prompt = ""
@@ -80,6 +87,9 @@ def mmlu(model_path: str, max_tokens: int = 35, temperature: float = 0.7):
     print(f"Accuracy for MMLU test set: {res_acc}")
     return res_acc
 
+def main(model_path: str, max_tokens: int = 40, temperature: float = 0.0):
+    mmlu(model_path=model_path, trans=None, tok=None, max_tokens=max_tokens, temperature=temperature)
+
 
 
 
@@ -87,5 +97,5 @@ def mmlu(model_path: str, max_tokens: int = 35, temperature: float = 0.7):
 
 if __name__ == "__main__":
     fire.Fire({
-        "mmlu": mmlu
+        "mmlu": main
         })
