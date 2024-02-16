@@ -25,10 +25,21 @@ def get_mistral_activations(model_path: str, prompt: str, max_tokens: int = 40, 
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = 3)
 
     activations = {k: [] for k in range(transformer.n_local_layers)}
+    activations_query = {k: None for k in range(transformer.n_local_layers)}
+
+    tokens_of_query = tokenizer.encode(prompt) # apply tokenizer to each word of response
+    query_length = len(tokens_of_query)
+    print(f"length of query after tokenizing: {query_length}")
+
     def get_activation(index: int):
 
         def hook(module, input, output):
-            activations[index].append(output.detach())
+            if output.detach().size() == torch.Size([query_length, 4096]): # check if current activations belong to input query (check for size of query length)
+                activations_query[index] = output.detach()
+                print(f"query activations extracted for layer {index}:{output.detach().size()}")
+
+            else:
+                activations[index].append(output.detach())
             #print(f"activation at module {module}: {output.detach().size()}")
         return hook
 
@@ -41,9 +52,6 @@ def get_mistral_activations(model_path: str, prompt: str, max_tokens: int = 40, 
     
     result, _logprobs = generate([prompt], transformer, tokenizer, max_tokens = max_tokens, temperature = temperature)
     
-    tokens_of_query = tokenizer.encode(prompt) # apply tokenizer to each word of response
-    query_length = len(tokens_of_query)
-    print(f"length of query after tokenizing: {query_length}")
     
     print(f"Answer of Mistral: {result}")
     for handle in hook_handles:# cleanup handles
@@ -53,15 +61,16 @@ def get_mistral_activations(model_path: str, prompt: str, max_tokens: int = 40, 
     for index, activation in activations.items():
         assert(activation is not None)
         #print(f"---------------------- layer {index} ---------------------------------")
-        query_tensor = activation.pop(0) # first tensor contains query passed to LLM
-        assert(query_tensor.size() == torch.Size([query_length, 4096])) #assert that we popped the correct tensor
+        #query_tensor = activation.pop(0) # first tensor contains query passed to LLM
+        #assert(query_tensor.size() == torch.Size([query_length, 4096])) #assert that we popped the correct tensor
         #for index_t, tensor in enumerate(activation):
             #print(f"activation size of token {index_t}: {tensor.size()}")
     
     for layer_index, activation_list in activations.items():
         activations[layer_index] = torch.stack(activation_list)
 
-    return activations, transformer, tokenizer
+    return activations, activations_query, transformer, tokenizer
+
     
     
 def token_wise_entropy(x):
@@ -112,15 +121,15 @@ def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
     prompt = "[INST] What year was albert Einstein born? [/INST]"
-    activations, transformer, tokenizer = get_mistral_activations(model_path=model_path, prompt=prompt)
-    lte = compute_lte(activations)
+    activations, activations_query, transformer, tokenizer = get_mistral_activations(model_path=model_path, prompt=prompt)
+    lte = compute_lte(activations_query)
     new_transformer = prune_lte(lte=lte, transformer=transformer) 
     result, logits = generate(prompts=[prompt], model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
     print(f"result after pruning: \n {result[0]}")
-    #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
+    new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
 
     #wandb_run.log(lbe)
-s
+
 
 
 
