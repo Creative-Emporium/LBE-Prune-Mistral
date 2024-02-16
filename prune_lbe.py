@@ -7,10 +7,13 @@ from torch import nn
 import wandb
 import numpy as np
 
+import run_benchmark
+
 from mistral.cache import RotatingBufferCache
 from mistral.model import Transformer
 from mistral.tokenizer import Tokenizer
 from main import generate
+from run_benchmark import mmlu
 
 
 
@@ -114,8 +117,10 @@ def main(model_path: str):
     new_transformer = prune_lte(lte=lte, transformer=transformer) 
     result, logits = generate(prompts=[prompt], model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
     print(f"result after pruning: \n {result[0]}")
-    #wandb_run.log(lbe)
+    #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
 
+    #wandb_run.log(lbe)
+s
 
 
 
