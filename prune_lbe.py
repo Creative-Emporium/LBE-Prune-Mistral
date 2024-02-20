@@ -86,6 +86,9 @@ def token_wise_entropy(x):
     x_std = torch.std(x, dim=0)
     #print(f"shape of std: {x_std.size()}")
     entropies = 0.5 * torch.log(np.pi * np.e * x_std**2 + 1)
+    sigmoid = torch.nn.Sigmoid()
+
+    entropies = sigmoid(entropies) # map non normalized entropies to a range between 0 and 1
     return torch.max(entropies)
     
 def compute_lte(activations: dict):
@@ -103,12 +106,12 @@ def compute_lte(activations: dict):
 def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0125):
     layers_to_be_pruned = []
     for index, token_entropy in lte.items():
-        if token_entropy < threshold:
+        if token_entropy > threshold:
             layers_to_be_pruned.append(index)
     
     print(f"layers to be pruned {layers_to_be_pruned}")
     for index in layers_to_be_pruned:
-        if index < 3:
+        if index < 3 or index == 31:
             continue
         print(f"pruned layer {index}")
         transformer.layers.pop(str(index))
@@ -123,7 +126,7 @@ def main(model_path: str):
     prompt = "[INST] What year was albert Einstein born? [/INST]"
     activations, activations_query, transformer, tokenizer = get_mistral_activations(model_path=model_path, prompt=prompt)
     lte = compute_lte(activations_query)
-    new_transformer = prune_lte(lte=lte, transformer=transformer) 
+    new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.6) 
     result, logits = generate(prompts=[prompt], model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
     print(f"result after pruning: \n {result[0]}")
     new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
