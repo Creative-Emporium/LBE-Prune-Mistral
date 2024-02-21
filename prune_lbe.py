@@ -17,12 +17,10 @@ from run_benchmark import mmlu
 
 
 
-def get_mistral_activations(model_path: str, prompt: list, max_tokens: int = 40, temperature: float = 0.0):
+def get_mistral_attention_activations(tokenizer: Tokenizer, transformer: Transformer, prompt: list, max_tokens: int = 40, temperature: float = 0.0):
 
     # helper method to attach forward hook to layer; returns hook method
         
-    tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
-    transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
 
     activations = {k: [] for k in range(transformer.n_local_layers)}
     activations_query = {k: [] for k in range(transformer.n_local_layers)}
@@ -72,7 +70,7 @@ def get_mistral_activations(model_path: str, prompt: list, max_tokens: int = 40,
     for layer_index, activation_list in activations_query.items():
         activations_query[layer_index] = torch.stack(activation_list)
 
-    return activations, activations_query, transformer, tokenizer
+    return activations, activations_query
 
     
     
@@ -128,9 +126,13 @@ def main(model_path: str):
     
     prompt = ["[INST] What year was albert Einstein born? [/INST]","[INST]What is the molecular structure of water?[/INST]",
                "[INST] Who was the president of the USA in the year 1992? [/INST]"]
-    activations, activations_query, transformer, tokenizer = get_mistral_activations(model_path=model_path, prompt=prompt)
+
+    tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
+    transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
+    activations, activations_query = get_mistral_attention_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt)
+    
     lte = compute_lte(activations_query)
-    new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.6) 
+    new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.60)
     result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
     print(f"result after pruning: \n {result}")
     #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
