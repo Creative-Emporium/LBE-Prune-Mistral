@@ -18,19 +18,17 @@ from run_benchmark import mmlu
 
 
 def get_mistral_attention_activations(tokenizer: Tokenizer, transformer: Transformer, prompt: list, max_tokens: int = 40, temperature: float = 0.0):
-
-    # helper method to attach forward hook to layer; returns hook method
-        
-
+    """
+    extracts activations of each Transformer Block after self attention layer (before residual connection)
+    """
     activations = {k: [] for k in range(transformer.n_local_layers)}
     activations_query = {k: [] for k in range(transformer.n_local_layers)}
 
-    #tokens_of_query = tokenizer.encode(prompt) # apply tokenizer to each word of response
-    #query_length = len(tokens_of_query)
-    #print(f"length of query after tokenizing: {query_length}")
     query_tensor_size = 0
     for p in prompt:
         query_tensor_size += len(tokenizer.encode(p))
+
+    # helper method to attach forward hook to layer; returns hook method
     def get_activation(index: int):
 
         def hook(module, input, output):
@@ -59,8 +57,6 @@ def get_mistral_attention_activations(tokenizer: Tokenizer, transformer: Transfo
     for index, activation in activations.items():
         assert(activation is not None)
         #print(f"---------------------- layer {index} ---------------------------------")
-        #query_tensor = activation.pop(0) # first tensor contains query passed to LLM
-        #assert(query_tensor.size() == torch.Size([query_length, 4096])) #assert that we popped the correct tensor
         #for index_t, tensor in enumerate(activation):
             #print(f"activation size of token {index_t}: {tensor.size()}")
     
@@ -73,6 +69,57 @@ def get_mistral_attention_activations(tokenizer: Tokenizer, transformer: Transfo
     return activations, activations_query
 
     
+def get_mistral_linear_activations(tokenizer: Tokenizer, transformer: Transformer, prompt: list, max_tokens: int = 40, temperature: float = 0.0):
+
+    """
+    extracts activations of each TransformerBlock after fully connected (linear) layer (before residual connection)
+    """ 
+    activations = {k: [] for k in range(transformer.n_local_layers)}
+    activations_query = {k: [] for k in range(transformer.n_local_layers)}
+
+    query_tensor_size = 0
+    for p in prompt:
+        query_tensor_size += len(tokenizer.encode(p))
+
+    # helper method to attach forward hook to layer; returns hook method
+    def get_activation(index: int):
+
+        def hook(module, input, output):
+            if output.detach().size() == torch.Size([query_tensor_size, 4096]): # check if current activations belong to input query (check for size of query length)
+                activations_query[index].append(output.detach())
+            else:
+                activations[index].append(output.detach())
+            #print(f"activation at module {module}: {output.detach().size()}")
+        return hook
+
+    hook_handles = [] # list of hooks handles for cleanup
+    for index, layer in transformer.layers.items():
+        handle = layer.feed_forward.w2.register_forward_hook(get_activation(int(index)))
+        hook_handles.append(handle)
+    
+
+    
+    result, _logprobs = generate(prompt, transformer, tokenizer, max_tokens = max_tokens, temperature = temperature)
+    
+    
+    print(f"Answer of Mistral: {result}")
+    for handle in hook_handles:# cleanup handles
+        handle.remove() 
+    
+    
+    for index, activation in activations.items():
+        assert(activation is not None)
+        #print(f"---------------------- layer {index} ---------------------------------")
+        #for index_t, tensor in enumerate(activation):
+        #    print(f"activation size of token {index_t}: {tensor.size()}")
+    
+    for layer_index, activation_list in activations.items():
+        activations[layer_index] = torch.stack(activation_list)
+
+    for layer_index, activation_list in activations_query.items():
+        activations_query[layer_index] = torch.stack(activation_list)
+
+    return activations, activations_query
     
 def token_wise_entropy(x):
     """ Estimate the differential entropy by assuming a gaussian distribution of
@@ -107,12 +154,12 @@ def compute_lte(activations: dict):
 def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0125):
     layers_to_be_pruned = []
     for index, token_entropy in lte.items():
-        if token_entropy > threshold:
+        if token_entropy < threshold:
             layers_to_be_pruned.append(index)
     
     print(f"layers to be pruned {layers_to_be_pruned}")
     for index in layers_to_be_pruned:
-        if index < 3 or index == 31:
+        if index < 14 or index == 31:
             continue
         print(f"pruned layer {index}")
         transformer.layers.pop(str(index))
@@ -129,10 +176,10 @@ def main(model_path: str):
 
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
-    activations, activations_query = get_mistral_attention_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt)
+    activations, activations_query = get_mistral_linear_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt)
     
-    lte = compute_lte(activations_query)
-    new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.60)
+    lte = compute_lte(activations)
+    new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.55)
     result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
     print(f"result after pruning: \n {result}")
     #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
