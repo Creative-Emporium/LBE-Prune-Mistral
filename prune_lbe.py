@@ -138,7 +138,7 @@ def token_wise_entropy(x):
     sigmoid = torch.nn.Sigmoid()
 
     entropies = sigmoid(entropies) # map non normalized entropies to a range between 0 and 1
-    return torch.max(entropies)
+    return torch.mean(entropies)
     
 def compute_lte(activations: dict):
     """computes Layerwise Token Entropy from model activations.
@@ -179,7 +179,7 @@ def main(model_path: str):
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
     activations, activations_query = get_mistral_attention_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt)
     
-    lte = compute_lte(activations_query)
+    lte = compute_lte(activations)
     new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.55)
     result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
     print(f"result after pruning: \n {result}")
