@@ -61,10 +61,10 @@ def get_mistral_attention_activations(tokenizer: Tokenizer, transformer: Transfo
             #print(f"activation size of token {index_t}: {tensor.size()}")
     
     for layer_index, activation_list in activations.items():
-        activations[layer_index] = torch.stack(activation_list)
+        activations[layer_index] = torch.stack(activation_list, dim=-1)
 
     for layer_index, activation_list in activations_query.items():
-        activations_query[layer_index] = torch.stack(activation_list)
+        activations_query[layer_index] = torch.stack(activation_list, dim=-1)
 
     return activations, activations_query
 
@@ -114,10 +114,12 @@ def get_mistral_linear_activations(tokenizer: Tokenizer, transformer: Transforme
         #    print(f"activation size of token {index_t}: {tensor.size()}")
     
     for layer_index, activation_list in activations.items():
-        activations[layer_index] = torch.stack(activation_list)
+        activations[layer_index] = torch.stack(activation_list, dim=-1)
+        print(f"size of activations at layer {layer_index}: {activations[layer_index].size()}")
 
     for layer_index, activation_list in activations_query.items():
-        activations_query[layer_index] = torch.stack(activation_list)
+        activations_query[layer_index] = torch.stack(activation_list, dim=-1)
+        print(f"size of query activations at layer {layer_index}: {activations_query[layer_index].size()}")
 
     return activations, activations_query
     
@@ -125,11 +127,10 @@ def token_wise_entropy(x):
     """ Estimate the differential entropy by assuming a gaussian distribution of
         values for different samples of a set of token activations.
     """
-    #if(x.shape[0] <= 1):
-    #    raise Exception("The batch entropy can only be calculated for |batch| > 1.")
+    if(x.shape[0] <= 1):
+        raise Exception("The batch entropy can only be calculated for |batch| > 1.")
     #print(f"shape before flatten {x.size()}")
-    #x = torch.flatten(x, start_dim=0, end_dim=1)
-    x = torch.squeeze(x)
+    x = torch.flatten(x, start_dim=1)
     #print(f"shape after flatten {x.size()}")
     x_std = torch.std(x, dim=0)
     #print(f"shape of std: {x_std.size()}")
@@ -172,13 +173,13 @@ def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
     prompt = ["[INST] What year was albert Einstein born? [/INST]","[INST]What is the molecular structure of water?[/INST]",
-               "[INST] Who was the president of the USA in the year 1992? [/INST]"]
+               "[INST] Who was the president of the USA in the year 1992? [/INST]" ,"[INST]WHat is? [/INST]"]
 
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
-    activations, activations_query = get_mistral_linear_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt)
+    activations, activations_query = get_mistral_attention_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt)
     
-    lte = compute_lte(activations)
+    lte = compute_lte(activations_query)
     new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.55)
     result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
     print(f"result after pruning: \n {result}")
