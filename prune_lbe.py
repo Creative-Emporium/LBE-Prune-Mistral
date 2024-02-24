@@ -4,6 +4,7 @@ from pathlib import Path
 
 import torch
 from torch import nn
+import datasets
 import wandb
 import numpy as np
 
@@ -168,20 +169,46 @@ def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0125):
     return transformer
 
 
+def fetch_mmlu_batch(batch_size: int):
+    """
+    fetch questions from mmlu dataset, fetches batch_size amount of questions
+    """
+    subset_list = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology',
+                    'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine',
+                      'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 
+                      'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 
+                      'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 
+                      'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 
+                      'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics',
+                        'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 
+                        'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 
+                        'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 
+                        'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology',
+                          'us_foreign_policy', 'virology', 'world_religions'] # mmlu topics; loop over them to run entire dataset
+    # sample on example from each topic
+    prompts: list = []
+    for index, topic in enumerate(subset_list):
+        if index >= batch_size:
+            break
+        mmlu_slice = datasets.load_dataset("Stevross/mmlu", topic, split="test[0:1]")
+        sample = mmlu_slice["question"][0]
+        prompts.append(f"[INST]{sample}[/INST]")
+    
+    return prompts
+
 
 def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
-    prompt = ["[INST] What year was albert Einstein born? [/INST]","[INST]What is the molecular structure of water?[/INST]",
-               "[INST] Who was the president of the USA in the year 1992? [/INST]" ,"[INST]WHat is? [/INST]"]
-
+    max_tokens = 80
+    prompt = fetch_mmlu_batch(batch_size=16)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
-    activations, activations_query = get_mistral_attention_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt)
+    activations, activations_query = get_mistral_linear_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt, max_tokens=max_tokens)
     
     lte = compute_lte(activations)
     new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.55)
-    result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens = 40, temperature = 0.0)
+    result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens =max_tokens, temperature = 0.0)
     print(f"result after pruning: \n {result}")
     #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
 
