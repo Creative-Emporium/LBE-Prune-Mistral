@@ -77,6 +77,7 @@ def get_mistral_linear_activations(tokenizer: Tokenizer, transformer: Transforme
     """ 
     activations = {k: [] for k in range(transformer.n_local_layers)}
     activations_query = {k: [] for k in range(transformer.n_local_layers)}
+    
 
     query_tensor_size = 0
     for p in prompt:
@@ -93,38 +94,59 @@ def get_mistral_linear_activations(tokenizer: Tokenizer, transformer: Transforme
             #print(f"activation at module {module}: {output.detach().size()}")
         return hook
 
-    hook_handles = [] # list of hooks handles for cleanup
+    # input tensors need to be extracted and later substracted from measured activations
+    inputs = {k: [] for k in range(transformer.n_local_layers)}
+    inputs_query = {k: [] for k in range(transformer.n_local_layers)}
+    
+    def get_input(index: int):
+
+        def hook(module, input, output):
+            if input[0].detach().size() == torch.Size([query_tensor_size, 4096]): # check if current input is input query (check for size of query length)
+                inputs_query[index].append(input[0].detach())
+            else:
+                inputs[index].append(input[0].detach())
+        return hook
+
+    activation_hook_handles = [] # list of hooks handles for cleanup
+    input_hook_handles = []
     for index, layer in transformer.layers.items():
-        handle = layer.feed_forward.w2.register_forward_hook(get_activation(int(index)))
-        hook_handles.append(handle)
+        act_handle = layer.feed_forward.w2.register_forward_hook(get_activation(int(index)))
+        activation_hook_handles.append(act_handle)
+        input_handle = layer.attention_norm.register_forward_hook(get_input(int(index)))
+        input_hook_handles.append(input_handle)
     
 
     
     result, _logprobs = generate(prompt, transformer, tokenizer, max_tokens = max_tokens, temperature = temperature)
-    
+    assert(len(activations) == len(inputs) and len(activations_query) == len(inputs_query))
     
     print(f"Answer of Mistral: {result}")
-    for handle in hook_handles:# cleanup handles
+    for handle in activation_hook_handles:# cleanup handles
         handle.remove() 
     
+    for handle in input_hook_handles:# cleanup handles
+        handle.remove() 
     
-    for index, activation in activations.items():
-        assert(activation is not None)
-        #print(f"---------------------- layer {index} ---------------------------------")
-        #for index_t, tensor in enumerate(activation):
-        #    print(f"activation size of token {index_t}: {tensor.size()}")
+    #substract inputs from activations to avoid signal pollution by recurrent connection after attention layer
+    for layer_index, activation_list in activations.items():
+        for index, activation in enumerate(activation_list):
+            activation_list[index] = torch.sub(activation_list[index], inputs[layer_index][index], alpha = 1)
+
+    for layer_index, activation_list in activations_query.items():
+        for index, activation in enumerate(activation_list):
+            activation_list[index] = torch.sub(activation_list[index], inputs_query[layer_index][index], alpha = 1)
     
     for layer_index, activation_list in activations.items():
         activations[layer_index] = torch.stack(activation_list, dim=-1)
-        print(f"size of activations at layer {layer_index}: {activations[layer_index].size()}")
+        #print(f"size of activations at layer {layer_index}: {activations[layer_index].size()}")
 
     for layer_index, activation_list in activations_query.items():
         activations_query[layer_index] = torch.stack(activation_list, dim=-1)
-        print(f"size of query activations at layer {layer_index}: {activations_query[layer_index].size()}")
+        #print(f"size of query activations at layer {layer_index}: {activations_query[layer_index].size()}")
 
     return activations, activations_query
     
-def token_wise_entropy(x):
+def layerwise_batch_entropy(x):
     """ Estimate the differential entropy by assuming a gaussian distribution of
         values for different samples of a set of token activations.
     """
@@ -141,14 +163,14 @@ def token_wise_entropy(x):
     entropies = sigmoid(entropies) # map non normalized entropies to a range between 0 and 1
     return torch.mean(entropies)
     
-def compute_lte(activations: dict):
-    """computes Layerwise Token Entropy from model activations.
+def compute_lbe(activations: dict):
+    """computes Layerwise Batch Entropy from model activations.
     takes dict with layer index as index and layer activations as value as parameter
     returns: dict with layer index as index and layerwise batch entropy at that layer index as value
     """
     lte = {}
     for index, activation in activations.items():
-        lte[index] = token_wise_entropy(activation)
+        lte[index] = layerwise_batch_entropy(activation)
         print(f"lte at index {index}: {lte[index]}")
     
     return lte
@@ -206,7 +228,7 @@ def main(model_path: str):
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
     activations, activations_query = get_mistral_linear_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt, max_tokens=max_tokens)
     
-    lte = compute_lte(activations)
+    lte = compute_lbe(activations)
     new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.55)
     result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens =max_tokens, temperature = 0.0)
     print(f"result after pruning: \n {result}")
