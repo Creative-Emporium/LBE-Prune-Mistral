@@ -175,9 +175,9 @@ def compute_lbe(activations: dict):
     
     return lte
 
-def prune_lte(lte: dict, transformer : Transformer, threshold: float = 0.0125):
+def prune_lbe(lbe: dict, transformer : Transformer, threshold: float = 0.0125):
     layers_to_be_pruned = []
-    for index, token_entropy in lte.items():
+    for index, token_entropy in lbe.items():
         if token_entropy < threshold:
             layers_to_be_pruned.append(index)
     
@@ -228,8 +228,8 @@ def main(model_path: str):
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
     activations, activations_query = get_mistral_linear_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt, max_tokens=max_tokens)
     
-    lte = compute_lbe(activations)
-    new_transformer = prune_lte(lte=lte, transformer=transformer, threshold=0.55)
+    lbe = compute_lbe(activations)
+    new_transformer = prune_lbe(lbe=lbe, transformer=transformer, threshold=0.55)
     result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens =max_tokens, temperature = 0.0)
     print(f"result after pruning: \n {result}")
     #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
