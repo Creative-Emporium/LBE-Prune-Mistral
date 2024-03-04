@@ -1,0 +1,1 @@
+The following are given contexts, with 4 completion options. In your response, give the numbering of the most fitting completion first, followed by the completion you selected. Make sure the number is the first thing you output, and give a single answer.
