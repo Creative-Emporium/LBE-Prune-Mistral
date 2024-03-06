@@ -13,8 +13,9 @@ from run_benchmark import mmlu
 
 
 def top_layer_pruning(transformer: Transformer, amount: int):
+    prune_count = 0
     if amount == 0:
-        return transformer
+        return transformer, prune_count
     num_layers = transformer.n_layers
     if amount >= num_layers -1:
         print(f"desired amount {amount} exceeds supported model size of {num_layers}: skipping pruning of model")
@@ -22,7 +23,6 @@ def top_layer_pruning(transformer: Transformer, amount: int):
     amount += 1 # increase amount by 1 since we always skip the last layer
     stop_layer :int = num_layers - amount - 1
     layers_to_prune = list(range(num_layers - 1, stop_layer, - 1))
-    prune_count = 0
     for index in layers_to_prune:
         if index == num_layers - 1:
             continue
@@ -41,8 +41,8 @@ def eval_top_layer_pruning(model_path:str, max_tokens = 40, temperature = 0.0, m
     accuracy_amount_pruned = {} # number of pruned layers as key, accuracy as value
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     for i in range(0, max_amount+1, 2):
-        transformer, prune_count = Transformer.from_folder(Path(model_path), max_batch_size = 1)
-        pruned_transformer = top_layer_pruning(transformer, amount=i)
+        transformer = Transformer.from_folder(Path(model_path), max_batch_size = 1)
+        pruned_transformer, prune_count = top_layer_pruning(transformer, amount=i)
         accuracy_amount_pruned[prune_count] = mmlu(model_path=model_path, trans=pruned_transformer, tok=tokenizer, subset_list=mmlu_subset_list, max_tokens=max_tokens, temperature=temperature)
         del pruned_transformer
         del transformer
