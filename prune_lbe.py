@@ -168,27 +168,41 @@ def compute_lbe(activations: dict):
     takes dict with layer index as index and layer activations as value as parameter
     returns: dict with layer index as index and layerwise batch entropy at that layer index as value
     """
-    lte = {}
+    lbe = {}
     for index, activation in activations.items():
-        lte[index] = layerwise_batch_entropy(activation)
-        print(f"lte at index {index}: {lte[index]}")
+        lbe[index] = layerwise_batch_entropy(activation)
+        print(f"lbe at index {index}: {lbe[index]}")
     
-    return lte
+    return lbe
 
-def prune_lbe(lbe: dict, transformer : Transformer, threshold: float = 0.0125):
-    layers_to_be_pruned = []
+def _prune_single_layer(lbe: dict, transformer : Transformer):
+    max_entropy : tuple = (0, 0.0) #(index, lbe)
     for index, token_entropy in lbe.items():
-        if token_entropy < threshold:
-            layers_to_be_pruned.append(index)
-    
-    print(f"layers to be pruned {layers_to_be_pruned}")
-    for index in layers_to_be_pruned:
-        if index < 14 or index == 31:
+        if index == 31:
             continue
-        print(f"pruned layer {index}")
-        transformer.layers.pop(str(index))
+        if token_entropy >= max_entropy[1]:
+            max_entropy = (index, token_entropy)
+
+    removed_block = transformer.layers.pop(str(max_entropy[0]))
+    assert(removed_block is not None)
+    transformer.n_local_layers = len(transformer.layers)
+    print(f"transformer.n_local_layers: {transformer.n_local_layers}")
     
     return transformer
+
+
+
+
+def prune_lbe(tokenizer:Tokenizer, transformer: Transformer, prompt: str, max_tokens: int, amount: int = 8):
+    pruned_transformer = transformer
+    for i in range(amount):
+        activations, _ = get_mistral_linear_activations(tokenizer=tokenizer, transformer=pruned_transformer, prompt=prompt, max_tokens=max_tokens)
+        lbe = compute_lbe(activations)
+        pruned_transformer = _prune_single_layer(lbe, pruned_transformer)
+    return pruned_transformer
+
+
+
 
 
 def fetch_mmlu_batch(batch_size: int):
@@ -223,14 +237,11 @@ def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
     max_tokens = 80
-    prompt = fetch_mmlu_batch(batch_size=16)
+    prompt = fetch_mmlu_batch(batch_size=2)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
-    activations, activations_query = get_mistral_linear_activations(tokenizer=tokenizer, transformer=transformer, prompt=prompt, max_tokens=max_tokens)
-    
-    lbe = compute_lbe(activations)
-    new_transformer = prune_lbe(lbe=lbe, transformer=transformer, threshold=0.55)
-    result, logits = generate(prompts=prompt, model=new_transformer,tokenizer= tokenizer, max_tokens =max_tokens, temperature = 0.0)
+    new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 8)
+    result, logits = generate(prompts = prompt, model = new_transformer,tokenizer = tokenizer, max_tokens = max_tokens, temperature = 0.0)
     print(f"result after pruning: \n {result}")
     #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
 
