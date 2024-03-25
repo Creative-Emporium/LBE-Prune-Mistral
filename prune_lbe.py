@@ -75,8 +75,9 @@ def get_mistral_linear_activations(tokenizer: Tokenizer, transformer: Transforme
     """
     extracts activations of each TransformerBlock after fully connected (linear) layer (before residual connection)
     """ 
-    activations = {k: [] for k in range(transformer.n_local_layers)}
-    activations_query = {k: [] for k in range(transformer.n_local_layers)}
+    activations_dict_size = transformer.n_local_layers
+    activations = {k: [] for k in range(activations_dict_size)}
+    activations_query = {k: [] for k in range(activations_dict_size)}
     
 
     query_tensor_size = 0
@@ -95,8 +96,8 @@ def get_mistral_linear_activations(tokenizer: Tokenizer, transformer: Transforme
         return hook
 
     # input tensors need to be extracted and later substracted from measured activations
-    inputs = {k: [] for k in range(transformer.n_local_layers)}
-    inputs_query = {k: [] for k in range(transformer.n_local_layers)}
+    inputs = {k: [] for k in range(activations_dict_size)}
+    inputs_query = {k: [] for k in range(activations_dict_size)}
     
     def get_input(index: int):
 
@@ -137,10 +138,14 @@ def get_mistral_linear_activations(tokenizer: Tokenizer, transformer: Transforme
             activation_list[index] = torch.sub(activation_list[index], inputs_query[layer_index][index], alpha = 1)
     
     for layer_index, activation_list in activations.items():
+        if len(activation_list) == 0:
+            print(f"list is empty at layer index: {layer_index}")
         activations[layer_index] = torch.stack(activation_list, dim=-1)
         #print(f"size of activations at layer {layer_index}: {activations[layer_index].size()}")
 
     for layer_index, activation_list in activations_query.items():
+        if len(activation_list) == 0:
+            print(f"list is empty at layer index: {layer_index}")
         activations_query[layer_index] = torch.stack(activation_list, dim=-1)
         #print(f"size of query activations at layer {layer_index}: {activations_query[layer_index].size()}")
 
@@ -177,17 +182,23 @@ def compute_lbe(activations: dict):
 
 def _prune_single_layer(lbe: dict, transformer : Transformer):
     max_entropy : tuple = (0, 0.0) #(index, lbe)
+    last_layer_index = transformer.n_local_layers - 1
     for index, token_entropy in lbe.items():
-        if index == 31:
+        if index == last_layer_index:
             continue
         if token_entropy >= max_entropy[1]:
             max_entropy = (index, token_entropy)
 
     removed_block = transformer.layers.pop(str(max_entropy[0]))
+    print(f"layer with index {max_entropy[0]} removed")
     assert(removed_block is not None)
+    for index, layer in transformer.layers.items():
+        if int(index) >= max_entropy[0]:
+            block_to_reindex = transformer.layers.pop(index)
+            new_index = int(index) - 1
+            transformer.layers[str(new_index)] = block_to_reindex
+
     transformer.n_local_layers = len(transformer.layers)
-    print(f"transformer.n_local_layers: {transformer.n_local_layers}")
-    
     return transformer
 
 
@@ -237,10 +248,10 @@ def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
     max_tokens = 80
-    prompt = fetch_mmlu_batch(batch_size=2)
+    prompt = fetch_mmlu_batch(batch_size=16)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
-    new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 8)
+    new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 2)
     result, logits = generate(prompts = prompt, model = new_transformer,tokenizer = tokenizer, max_tokens = max_tokens, temperature = 0.0)
     print(f"result after pruning: \n {result}")
     #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
