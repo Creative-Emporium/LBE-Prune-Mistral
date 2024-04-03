@@ -8,12 +8,14 @@ import datasets
 import wandb
 import numpy as np
 
-import run_benchmark
 
 from mistral.cache import RotatingBufferCache
 from mistral.model import Transformer
 from mistral.tokenizer import Tokenizer
+
+
 from main import generate
+
 from run_benchmark import mmlu
 
 
@@ -163,9 +165,9 @@ def layerwise_batch_entropy(x):
     x_std = torch.std(x, dim=0)
     #print(f"shape of std: {x_std.size()}")
     entropies = 0.5 * torch.log(np.pi * np.e * x_std**2 + 1)
-    sigmoid = torch.nn.Sigmoid()
+    #sigmoid = torch.nn.Sigmoid()
 
-    entropies = sigmoid(entropies) # map non normalized entropies to a range between 0 and 1
+    #entropies = sigmoid(entropies) # map non normalized entropies to a range between 0 and 1
     return torch.mean(entropies)
     
 def compute_lbe(activations: dict):
@@ -176,11 +178,28 @@ def compute_lbe(activations: dict):
     lbe = {}
     for index, activation in activations.items():
         lbe[index] = layerwise_batch_entropy(activation)
+        lbe[index] = lbe[index].item() # convert scalar tensor to python float
+        assert(type(lbe[index]) is float)
         print(f"lbe at index {index}: {lbe[index]}")
     
     return lbe
 
-def _prune_single_layer(lbe: dict, transformer : Transformer):
+
+def _reindex_pruned_transformer(start_index: int, amount_removed: int, transformer: Transformer) -> Transformer:
+    print(f"length of transformer.layers {len(transformer.layers)}")
+    for index in range(start_index, len(transformer.layers) + amount_removed, 1):
+        if index >= start_index:
+            try: 
+                block_to_reindex = transformer.layers.pop(str(index))
+                new_index = index - amount_removed
+                transformer.layers[str(new_index)] = block_to_reindex
+            except KeyError:
+                continue
+
+    transformer.n_local_layers = len(transformer.layers)
+    return transformer
+
+def _prune_single_layer(lbe: dict, transformer : Transformer) -> Transformer:
     max_entropy : tuple = (0, 0.0) #(index, lbe)
     last_layer_index = transformer.n_local_layers - 1
     for index, token_entropy in lbe.items():
@@ -192,19 +211,53 @@ def _prune_single_layer(lbe: dict, transformer : Transformer):
     removed_block = transformer.layers.pop(str(max_entropy[0]))
     print(f"layer with index {max_entropy[0]} removed")
     assert(removed_block is not None)
-    for index, layer in transformer.layers.items():
-        if int(index) >= max_entropy[0]:
-            block_to_reindex = transformer.layers.pop(index)
-            new_index = int(index) - 1
-            transformer.layers[str(new_index)] = block_to_reindex
+    transformer = _reindex_pruned_transformer(max_entropy[0], 1, transformer)
+    #for index, layer in transformer.layers.items():
+    #    if int(index) >= max_entropy[0]:
+    #        block_to_reindex = transformer.layers.pop(index)
+    #        new_index = int(index) - 1
+    #        transformer.layers[str(new_index)] = block_to_reindex
 
-    transformer.n_local_layers = len(transformer.layers)
+    #transformer.n_local_layers = len(transformer.layers)
+    return transformer
+
+
+def _lbe_similarity_pruning(lbe: dict, transformer: Transformer, amount: int, start_at_layer: int) -> Transformer:
+    if amount < 1:
+        print("amount must be more than 1! Aborting without similarity pruning!!")
+        return transformer
+    highest_layer_index = transformer.n_local_layers - 1
+    highest_differential : tuple = (31, 99999.9) # (index, differential between index lbe and index + amount lbe)
+    for index, entropy in lbe.items():
+        comparison_index = index + amount + 1; # we want at least one layer in between 
+        if  comparison_index >= highest_layer_index: 
+            continue
+        if index < start_at_layer:
+            continue
+        differential = _log_ratio(x = lbe[index], y = lbe[comparison_index])
+        if differential < highest_differential[1]:
+            highest_differential = (index, differential)
+    
+    target_index = highest_differential[0] + amount + 1 
+    for index in range(highest_differential[0] + 1, target_index, 1):
+        print(f"removing layer with index {index}; should be between {highest_differential[0]} and {target_index}")
+        removed_layer = transformer.layers.pop(str(index))
+        assert(removed_layer is not None)
+    
+
+    transformer = _reindex_pruned_transformer(start_index=(highest_differential[0] + 1), amount_removed=amount, transformer=transformer)
     return transformer
 
 
 
+def _log_ratio(x :float, y:float):
+    return abs(np.log2(x/y))
 
-def prune_lbe(tokenizer:Tokenizer, transformer: Transformer, prompt: str, max_tokens: int, amount: int = 8):
+
+
+
+
+def prune_lbe(tokenizer:Tokenizer, transformer: Transformer, prompt: list, max_tokens: int, amount: int = 2) -> Transformer:
     pruned_transformer = transformer
     for i in range(amount):
         activations, _ = get_mistral_linear_activations(tokenizer=tokenizer, transformer=pruned_transformer, prompt=prompt, max_tokens=max_tokens)
@@ -213,7 +266,12 @@ def prune_lbe(tokenizer:Tokenizer, transformer: Transformer, prompt: str, max_to
     return pruned_transformer
 
 
+def prune_lbe_similarity(tokenizer:Tokenizer, transformer: Transformer, prompt: list, max_tokens: int, amount: int = 2, start_at_layer = 16) -> Transformer:
 
+        activations, _ = get_mistral_linear_activations(tokenizer=tokenizer,transformer=transformer , prompt=prompt, max_tokens=max_tokens)
+        lbe = compute_lbe(activations)
+        transformer = _lbe_similarity_pruning(lbe=lbe, transformer=transformer, amount=amount, start_at_layer=start_at_layer)
+        return transformer
 
 
 def fetch_mmlu_batch(batch_size: int):
@@ -251,9 +309,11 @@ def main(model_path: str):
     prompt = fetch_mmlu_batch(batch_size=16)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
-    new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 2)
+    #new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 2)
+    new_transformer = prune_lbe_similarity(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 5, start_at_layer = 14)
     result, logits = generate(prompts = prompt, model = new_transformer,tokenizer = tokenizer, max_tokens = max_tokens, temperature = 0.0)
-    print(f"result after pruning: \n {result}")
+    for r in result:
+        print(f"result after pruning: \n {result}")
     #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
 
     #wandb_run.log(lbe)
