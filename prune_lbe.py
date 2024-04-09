@@ -272,24 +272,16 @@ def prune_lbe_similarity(tokenizer:Tokenizer, transformer: Transformer, prompt: 
         lbe = compute_lbe(activations)
         transformer = _lbe_similarity_pruning(lbe=lbe, transformer=transformer, amount=amount, start_at_layer=start_at_layer)
         return transformer
+    
+def prune_cosine_similarity(tokenizer:Tokenizer, transformer: Transformer, prompt: list, max_tokens: int, amount: int = 2, start_at_layer = 16) -> Transformer:
+        activations, _ = get_mistral_linear_activations(tokenizer=tokenizer,transformer=transformer , prompt=prompt, max_tokens=max_tokens)
+        activations
 
 
-def fetch_mmlu_batch(batch_size: int):
+def fetch_mmlu_batch(batch_size: int, subset_list: list):
     """
     fetch questions from mmlu dataset, fetches batch_size amount of questions
     """
-    subset_list = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology',
-                    'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine',
-                      'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 
-                      'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 
-                      'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 
-                      'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 
-                      'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics',
-                        'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 
-                        'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 
-                        'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 
-                        'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology',
-                          'us_foreign_policy', 'virology', 'world_religions'] # mmlu topics; loop over them to run entire dataset
     # sample on example from each topic
     prompts: list = []
     for index, topic in enumerate(subset_list):
@@ -305,16 +297,28 @@ def fetch_mmlu_batch(batch_size: int):
 def main(model_path: str):
     #wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
     
-    max_tokens = 80
-    prompt = fetch_mmlu_batch(batch_size=16)
+    max_tokens = 40
+    subset_list = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology',
+                    'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine',
+                      'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 
+                      'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 
+                      'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 
+                      'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 
+                      'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics',
+                        'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 
+                        'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 
+                        'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 
+                        'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology',
+                          'us_foreign_policy', 'virology', 'world_religions'] # mmlu topics; loop over them to run entire dataset
+    prompt = fetch_mmlu_batch(batch_size=16, subset_list=subset_list)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size = len(prompt))
     #new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 2)
-    new_transformer = prune_lbe_similarity(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 5, start_at_layer = 14)
+    new_transformer = prune_lbe_similarity(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 7, start_at_layer = 14)
     result, logits = generate(prompts = prompt, model = new_transformer,tokenizer = tokenizer, max_tokens = max_tokens, temperature = 0.0)
     for r in result:
         print(f"result after pruning: \n {result}")
-    #new_transformer_acc = mmlu(model_path=model_path, trans=new_transformer, tok=tokenizer, max_tokens=40, temperature=0.0)
+    new_transformer_acc = mmlu(transformer=new_transformer, tokenizer=tokenizer,subset_list=subset_list, max_tokens=max_tokens, temperature=0.0)
 
     #wandb_run.log(lbe)
 
