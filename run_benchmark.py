@@ -48,7 +48,13 @@ def mmlu(transformer:Transformer, tokenizer: Tokenizer, subset_list: list = ["hi
     predictions = []
     
     for subset in subset_list:
-        ground_truths, predictions = _generate_from_batched_mmlu(transformer=transformer, tokenizer=tokenizer, subset=subset, ground_truths=ground_truths, predictions=predictions, max_tokens = max_tokens, temperature = temperature)
+        gt, pred = _generate_from_batched_mmlu(transformer=transformer, tokenizer=tokenizer, subset=subset, max_tokens = max_tokens, temperature = temperature)
+        print(f"len predictions {len(pred)}")
+        print(f"len ground truths {len(gt)}")
+
+    ground_truths.extend(gt)
+    predictions.extend(pred)
+    assert(len(ground_truths) == len(predictions))
     accuracy_metric = evaluate.load("accuracy")
     result = accuracy_metric.compute(references=ground_truths, predictions=predictions)
     res_acc = result["accuracy"]
@@ -56,17 +62,20 @@ def mmlu(transformer:Transformer, tokenizer: Tokenizer, subset_list: list = ["hi
     print(f"Accuracy for MMLU test set: {res_acc}")
     return res_acc
 
-def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, subset: str, ground_truths: list, predictions: list, max_tokens: int = 80, temperature: float = 0.0):
-    mmlu_dataset = datasets.load_dataset("Stevross/mmlu",subset, split="test")
-    mmlu_dataset.with_format("torch")
+def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, subset: str, max_tokens: int = 80, temperature: float = 0.0):
+    hf_dataset = datasets.load_dataset("Stevross/mmlu",subset, split="test", streaming=True)
+    mmlu_dataset = hf_dataset.with_format(type="torch")
+    print(f"type of mmlu dataset is {type(mmlu_dataset)}")
     batch_size = transformer.args.max_batch_size
     mmlu_dataloader = DataLoader(mmlu_dataset, batch_size = batch_size, shuffle=False)
-    print(f"length of subset {subset}: {len(mmlu_dataset)}")
-    print(f"len of dataloader: {len(mmlu_dataloader)}")
+    #print(f"length of subset {subset}: {len(mmlu_dataset)}")
+    #print(f"len of dataloader: {len(mmlu_dataloader)}")
     five_shot_prompt = ""
     with open("benchmark_prompts/mmlu_5_shot_prompt.txt","r") as f:
         five_shot_prompt=f.read()
-    for batch in mmlu_dataloader:
+    predictions = []
+    ground_truths = []
+    for iter_num, batch in enumerate(mmlu_dataloader):
         batch_of_prompts = _construct_mmlu_batch(batch=batch, context=five_shot_prompt)
         results, _logprobs = generate(
             batch_of_prompts,
@@ -94,11 +103,10 @@ def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, 
                print(f"prediction: {ints_in_string[0]}")
                assert(type(ints_in_string[0]) == int)
                predictions.append(ints_in_string[0]) # re.findall returns a list and parses from left to right; pred id should be in first list element
+        
+        ground_truths.extend(batch["answer"].tolist())
+        print(f"finished iteration number {iter_num}")
 
-        ground_truths.extend(mmlu_dataset["answer"])
-        print(f"len predictions {len(predictions)}")
-        print(f"len ground truths {len(ground_truths)}")
-        assert(len(ground_truths) == len(predictions))
         return ground_truths, predictions
 
 
