@@ -63,13 +63,13 @@ def mmlu(transformer:Transformer, tokenizer: Tokenizer, subset_list: list = ["hi
     return res_acc
 
 def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, subset: str, max_tokens: int = 80, temperature: float = 0.0):
-    hf_dataset = datasets.load_dataset("Stevross/mmlu",subset, split="test", streaming=True)
+    hf_dataset = datasets.load_dataset("Stevross/mmlu",subset, split="test")
     mmlu_dataset = hf_dataset.with_format(type="torch")
     print(f"type of mmlu dataset is {type(mmlu_dataset)}")
     batch_size = transformer.args.max_batch_size
     mmlu_dataloader = DataLoader(mmlu_dataset, batch_size = batch_size, shuffle=False)
-    #print(f"length of subset {subset}: {len(mmlu_dataset)}")
-    #print(f"len of dataloader: {len(mmlu_dataloader)}")
+    print(f"length of subset {subset}: {len(mmlu_dataset)}")
+    print(f"len of dataloader: {len(mmlu_dataloader)}")
     five_shot_prompt = ""
     with open("benchmark_prompts/mmlu_5_shot_prompt.txt","r") as f:
         five_shot_prompt=f.read()
@@ -107,7 +107,7 @@ def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, 
         ground_truths.extend(batch["answer"].tolist())
         print(f"finished iteration number {iter_num}")
 
-        return ground_truths, predictions
+    return ground_truths, predictions
 
 
 def __construct_hellaswag_prompt(data):
@@ -182,7 +182,7 @@ def hellaswag(model_path: str, trans:Transformer = None, tok: Tokenizer = None, 
 
 def main():
     #subset_list = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology', 'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine', 'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics', 'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology', 'us_foreign_policy', 'virology', 'world_religions'] # mmlu topics; loop over them to run entire dataset
-    subset_list = ['abstract_algebra']
+    subset_list = ['high_school_geography']
     max_tokens: int = 80
     temperature: float = 0.0
     model_path = "model_weights/mistral-7B-v0.2-instruct"
