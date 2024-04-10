@@ -26,12 +26,15 @@ def _construct_mmlu_batch(batch: dict, context: str):
     return prompts
 
 def _construct_mmlu_prompt(question: str, choices: list, answer_index: int, context: str):
-    """construct correct prompt from dataset batch entries"""
+    """construct correct prompt from dataset batch entries; the entries are aranged
+     as lists of tuples, where each tuple contains all answers with code 0 for the entire batch:
+      [(ans0_to_quest0, ans0_to_quest1... ans0_to_quest_n), (ans1_to_quest0,..ans1_to_quest_n), (ans2_to_quest0,..ans2_to_quest_n), (ans3_to_quest0,..ans3_to_quest_n)] 
+      hence we pass answer_index to this method from _construct_mmlu_batch"""
     
     question +="\n"
     answers =""
     for i, ans_tuple in enumerate(choices):
-        answers +=f"{i}: {ans_tuple[i]}\n"
+        answers +=f"{i}: {ans_tuple[answer_index]}\n"
     answers +="\n"
     prompt = f"{question} {answers} Answer: "
     prompt = context + prompt
@@ -46,9 +49,12 @@ def mmlu(transformer:Transformer, tokenizer: Tokenizer, subset_list: list = ["hi
     print(f"running mmlu benchmark with max_tokens {max_tokens} and temperature {temperature}")
     ground_truths = [] 
     predictions = []
+    five_shot_prompt = ""
+    with open("benchmark_prompts/mmlu_5_shot_prompt.txt","r") as f:
+        five_shot_prompt=f.read()
     
     for subset in subset_list:
-        gt, pred = _generate_from_batched_mmlu(transformer=transformer, tokenizer=tokenizer, subset=subset, max_tokens = max_tokens, temperature = temperature)
+        gt, pred = _generate_from_batched_mmlu(transformer=transformer, tokenizer=tokenizer, subset=subset, five_shot_prompt=five_shot_prompt, max_tokens = max_tokens, temperature = temperature)
         print(f"len predictions {len(pred)}")
         print(f"len ground truths {len(gt)}")
 
@@ -62,7 +68,7 @@ def mmlu(transformer:Transformer, tokenizer: Tokenizer, subset_list: list = ["hi
     print(f"Accuracy for MMLU test set: {res_acc}")
     return res_acc
 
-def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, subset: str, max_tokens: int = 80, temperature: float = 0.0):
+def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, subset: str, five_shot_prompt: str, max_tokens: int = 80, temperature: float = 0.0):
     hf_dataset = datasets.load_dataset("Stevross/mmlu",subset, split="test")
     mmlu_dataset = hf_dataset.with_format(type="torch")
     print(f"type of mmlu dataset is {type(mmlu_dataset)}")
@@ -70,12 +76,10 @@ def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, 
     mmlu_dataloader = DataLoader(mmlu_dataset, batch_size = batch_size, shuffle=False)
     print(f"length of subset {subset}: {len(mmlu_dataset)}")
     print(f"len of dataloader: {len(mmlu_dataloader)}")
-    five_shot_prompt = ""
-    with open("benchmark_prompts/mmlu_5_shot_prompt.txt","r") as f:
-        five_shot_prompt=f.read()
+
     predictions = []
     ground_truths = []
-    for iter_num, batch in enumerate(mmlu_dataloader):
+    for  batch in mmlu_dataloader:
         batch_of_prompts = _construct_mmlu_batch(batch=batch, context=five_shot_prompt)
         results, _logprobs = generate(
             batch_of_prompts,
@@ -86,9 +90,9 @@ def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, 
         )
         print(f"len of generated results: {len(results)}")
         for res in results:
-            #print("---------------result--------------------")
-            #print(f"{res}")
-            #print("---------------result end--------------------")
+            print("---------------result--------------------")
+            print(f"{res}")
+            print("---------------result end--------------------")
             regex = "(\[/INST\]) ([0-3])"
             ints_in_string = re.findall(regex, res)
             print("regex before cast:")
@@ -105,7 +109,6 @@ def _generate_from_batched_mmlu(transformer: Transformer, tokenizer: Tokenizer, 
                predictions.append(ints_in_string[0]) # re.findall returns a list and parses from left to right; pred id should be in first list element
         
         ground_truths.extend(batch["answer"].tolist())
-        print(f"finished iteration number {iter_num}")
 
     return ground_truths, predictions
 
@@ -183,7 +186,7 @@ def hellaswag(model_path: str, trans:Transformer = None, tok: Tokenizer = None, 
 def main():
     #subset_list = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology', 'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine', 'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics', 'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology', 'us_foreign_policy', 'virology', 'world_religions'] # mmlu topics; loop over them to run entire dataset
     subset_list = ['high_school_geography']
-    max_tokens: int = 80
+    max_tokens: int = 10
     temperature: float = 0.0
     model_path = "model_weights/mistral-7B-v0.2-instruct"
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
