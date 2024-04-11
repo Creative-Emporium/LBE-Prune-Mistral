@@ -48,7 +48,7 @@ def _construct_mmlu_prompt(
 def mmlu(
     transformer: Transformer,
     tokenizer: Tokenizer,
-    subset_list: list = ["high_school_geography"],
+    subset_list: list,
     max_tokens: int = 80,
     temperature: float = 0.0,
 ):
@@ -74,9 +74,8 @@ def mmlu(
             max_tokens=max_tokens,
             temperature=temperature,
         )
-
-    ground_truths.extend(gt)
-    predictions.extend(pred)
+        ground_truths.extend(gt)
+        predictions.extend(pred)
     assert len(ground_truths) == len(predictions)
     accuracy_metric = evaluate.load("accuracy")
     result = accuracy_metric.compute(references=ground_truths, predictions=predictions)
@@ -225,13 +224,71 @@ def hellaswag(
 
 
 def main():
-    # subset_list = ['abstract_algebra', 'anatomy', 'astronomy', 'business_ethics', 'clinical_knowledge', 'college_biology', 'college_chemistry', 'college_computer_science', 'college_mathematics', 'college_medicine', 'college_physics', 'computer_security', 'conceptual_physics', 'econometrics', 'electrical_engineering', 'elementary_mathematics', 'formal_logic', 'global_facts', 'high_school_biology', 'high_school_chemistry', 'high_school_computer_science', 'high_school_european_history', 'high_school_geography', 'high_school_government_and_politics', 'high_school_macroeconomics', 'high_school_mathematics', 'high_school_microeconomics', 'high_school_physics', 'high_school_psychology', 'high_school_statistics', 'high_school_us_history', 'high_school_world_history', 'human_aging', 'human_sexuality', 'international_law', 'jurisprudence', 'logical_fallacies', 'machine_learning', 'management', 'marketing', 'medical_genetics', 'miscellaneous', 'moral_disputes', 'moral_scenarios', 'nutrition', 'philosophy', 'prehistory', 'professional_accounting', 'professional_law', 'professional_medicine', 'professional_psychology', 'public_relations', 'security_studies', 'sociology', 'us_foreign_policy', 'virology', 'world_religions'] # mmlu topics; loop over them to run entire dataset
-    subset_list = ["high_school_geography"]
-    max_tokens: int = 10
+    subset_list = [
+        "abstract_algebra",
+        "anatomy",
+        "astronomy",
+        "business_ethics",
+        "clinical_knowledge",
+        "college_biology",
+        "college_chemistry",
+        "college_computer_science",
+        "college_mathematics",
+        "college_medicine",
+        "college_physics",
+        "computer_security",
+        "conceptual_physics",
+        "econometrics",
+        "electrical_engineering",
+        "elementary_mathematics",
+        "formal_logic",
+        "global_facts",
+        "high_school_biology",
+        "high_school_chemistry",
+        "high_school_computer_science",
+        "high_school_european_history",
+        "high_school_geography",
+        "high_school_government_and_politics",
+        "high_school_macroeconomics",
+        "high_school_mathematics",
+        "high_school_microeconomics",
+        "high_school_physics",
+        "high_school_psychology",
+        "high_school_statistics",
+        "high_school_us_history",
+        "high_school_world_history",
+        "human_aging",
+        "human_sexuality",
+        "international_law",
+        "jurisprudence",
+        "logical_fallacies",
+        "machine_learning",
+        "management",
+        "marketing",
+        "medical_genetics",
+        "miscellaneous",
+        "moral_disputes",
+        "moral_scenarios",
+        "nutrition",
+        "philosophy",
+        "prehistory",
+        "professional_accounting",
+        "professional_law",
+        "professional_medicine",
+        "professional_psychology",
+        "public_relations",
+        "security_studies",
+        "sociology",
+        "us_foreign_policy",
+        "virology",
+        "world_religions",
+    ]  # mmlu topics; loop over them to run entire dataset
+    max_tokens: int = 40
     temperature: float = 0.0
+    batch_size = 8
     model_path = "model_weights/mistral-7B-v0.2-instruct"
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
-    transformer = Transformer.from_folder(Path(model_path), max_batch_size=16)
+    transformer = Transformer.from_folder(Path(model_path), max_batch_size=batch_size)
     mmlu(
         transformer=transformer,
         tokenizer=tokenizer,
@@ -242,4 +299,4 @@ def main():
 
 
 if __name__ == "__main__":
-    fire.Fire({"mmlu": main, "hellaswag": hellaswag})
+    main()

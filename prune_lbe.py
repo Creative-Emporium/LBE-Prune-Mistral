@@ -427,7 +427,8 @@ def main(model_path: str):
         "virology",
         "world_religions",
     ]  # mmlu topics; loop over them to run entire dataset
-    prompt = fetch_mmlu_batch(batch_size=16, subset_list=subset_list)
+    batch_size: int = 8
+    prompt = fetch_mmlu_batch(batch_size=batch_size, subset_list=subset_list)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size=len(prompt))
     # new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 2)
