@@ -65,13 +65,20 @@ def get_mistral_attention_activations(
         # for index_t, tensor in enumerate(activation):
         # print(f"activation size of token {index_t}: {tensor.size()}")
 
+    last_token_per_layer = {}  # saves the last generated token at each layer
+    for layer_index, activation_list in activations.items():
+        last_token_per_layer[layer_index] = activation_list[-1]
+        print(
+            f"last token of layer {layer_index} is {last_token_per_layer[layer_index].size()}"
+        )
+
     for layer_index, activation_list in activations.items():
         activations[layer_index] = torch.stack(activation_list, dim=-1)
 
     for layer_index, activation_list in activations_query.items():
         activations_query[layer_index] = torch.stack(activation_list, dim=-1)
 
-    return activations, activations_query
+    return activations, last_token_per_layer
 
 
 def get_mistral_linear_activations(
@@ -237,13 +244,6 @@ def _prune_single_layer(lbe: dict, transformer: Transformer) -> Transformer:
     print(f"layer with index {max_entropy[0]} removed")
     assert removed_block is not None
     transformer = _reindex_pruned_transformer(max_entropy[0], 1, transformer)
-    # for index, layer in transformer.layers.items():
-    #    if int(index) >= max_entropy[0]:
-    #        block_to_reindex = transformer.layers.pop(index)
-    #        new_index = int(index) - 1
-    #        transformer.layers[str(new_index)] = block_to_reindex
-
-    # transformer.n_local_layers = len(transformer.layers)
     return transformer
 
 
@@ -254,7 +254,7 @@ def _lbe_similarity_pruning(
         print("amount must be more than 1! Aborting without similarity pruning!!")
         return transformer
     highest_layer_index = transformer.n_local_layers - 1
-    highest_differential: tuple = (
+    lowest_differential: tuple = (
         31,
         99999.9,
     )  # (index, differential between index lbe and index + amount lbe)
@@ -266,19 +266,21 @@ def _lbe_similarity_pruning(
         if index < start_at_layer:
             continue
         differential = _log_ratio(x=lbe[index], y=lbe[comparison_index])
-        if differential < highest_differential[1]:
-            highest_differential = (index, differential)
+        if differential < lowest_differential[1]:
+            lowest_differential = (index, differential)
 
-    target_index = highest_differential[0] + amount + 1
-    for index in range(highest_differential[0] + 1, target_index, 1):
+    target_index = lowest_differential[0] + amount + 1
+    if target_index > highest_layer_index:
+        target_index = highest_layer_index
+    for index in range(lowest_differential[0] + 1, target_index, 1):
         print(
-            f"removing layer with index {index}; should be between {highest_differential[0]} and {target_index}"
+            f"removing layer with index {index}; should be between {lowest_differential[0]} and {target_index}"
         )
         removed_layer = transformer.layers.pop(str(index))
         assert removed_layer is not None
 
     transformer = _reindex_pruned_transformer(
-        start_index=(highest_differential[0] + 1),
+        start_index=(lowest_differential[0] + 1),
         amount_removed=amount,
         transformer=transformer,
     )
@@ -296,6 +298,9 @@ def prune_lbe(
     max_tokens: int,
     amount: int = 2,
 ) -> Transformer:
+    """
+    prunes network using naive algorithm: select maximal lbe at each iteration, prune layer with maximal lbe; iterate until amount layers have been removed
+    """
     pruned_transformer = transformer
     for i in range(amount):
         activations, _ = get_mistral_linear_activations(
@@ -331,7 +336,68 @@ def prune_lbe_similarity(
     return transformer
 
 
-def prune_cosine_similarity(
+def _last_token_similarity(
+    last_token_start_layer: torch.Tensor, last_token_end_layer: torch.Tensor
+) -> float:
+    """implements token distance metric from paper The Unreasonable Ineffectiveness of the Deeper Layers by Gromov et al;
+    computes distance metric between the last tokens of the start and end layer"""
+    token_dot_product = torch.dot(
+        last_token_start_layer.flatten(), last_token_end_layer.flatten()
+    )
+    token_norms_mult = torch.linalg.vector_norm(
+        last_token_start_layer, dim=None
+    ) * torch.linalg.vector_norm(last_token_end_layer, dim=None)
+    arcus_cos_tensor = torch.arccos(token_dot_product / token_norms_mult)
+    return 1 / np.pi * (arcus_cos_tensor.data.cpu().numpy())
+
+
+def _last_token_arccos_similiarity_pruning(
+    last_token_per_layer: dict,
+    transformer: Transformer,
+    amount: int,
+    start_at_layer: int,
+) -> Transformer:
+    if amount < 1:
+        print("amount must be more than 1! Aborting without similarity pruning!!")
+        return transformer
+    highest_layer_index = transformer.n_local_layers - 1
+    lowest_differential: tuple = (
+        31,
+        99999.9,
+    )  # (index, differential between index last_token_per_layer and index + amount last_token_per_layer)
+    for index, _ in last_token_per_layer.items():
+        comparison_index = index + amount + 1
+        # we want at least one layer in between
+        if comparison_index >= highest_layer_index:
+            continue
+        if index < start_at_layer:
+            continue
+        differential = _last_token_similarity(
+            last_token_start_layer=last_token_per_layer[index],
+            last_token_end_layer=last_token_per_layer[comparison_index],
+        )
+        if differential < lowest_differential[1]:
+            lowest_differential = (index, differential)
+
+    target_index = lowest_differential[0] + amount + 1
+    if target_index > highest_layer_index:
+        target_index = highest_layer_index
+    for index in range(lowest_differential[0] + 1, target_index, 1):
+        print(
+            f"removing layer with index {index}; should be between {lowest_differential[0]} and {target_index}"
+        )
+        removed_layer = transformer.layers.pop(str(index))
+        assert removed_layer is not None
+
+    transformer = _reindex_pruned_transformer(
+        start_index=(lowest_differential[0] + 1),
+        amount_removed=amount,
+        transformer=transformer,
+    )
+    return transformer
+
+
+def prune_last_token_cosine_similarity(
     tokenizer: Tokenizer,
     transformer: Transformer,
     prompt: list,
@@ -339,13 +405,20 @@ def prune_cosine_similarity(
     amount: int = 2,
     start_at_layer=16,
 ) -> Transformer:
-    activations, _ = get_mistral_linear_activations(
+    """implements approach by paper The Unreasonable Ineffectiveness of the Deeper Layers by Gromov et al"""
+    _, last_token_per_layer = get_mistral_linear_activations(
         tokenizer=tokenizer,
         transformer=transformer,
         prompt=prompt,
         max_tokens=max_tokens,
     )
-    activations
+    transformer = _last_token_arccos_similiarity_pruning(
+        last_token_per_layer=last_token_per_layer,
+        transformer=transformer,
+        amount=amount,
+        start_at_layer=start_at_layer,
+    )
+    return transformer
 
 
 def fetch_mmlu_batch(batch_size: int, subset_list: list):
@@ -432,7 +505,15 @@ def main(model_path: str):
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size=len(prompt))
     # new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 2)
-    new_transformer = prune_lbe_similarity(
+    # new_transformer = prune_lbe_similarity(
+    #    tokenizer=tokenizer,
+    #    transformer=transformer,
+    #    prompt=prompt,
+    #    max_tokens=max_tokens,
+    #    amount=7,
+    #    start_at_layer=14,
+    # )
+    new_transformer = prune_last_token_cosine_similarity(
         tokenizer=tokenizer,
         transformer=transformer,
         prompt=prompt,
@@ -449,6 +530,7 @@ def main(model_path: str):
     )
     for r in result:
         print(f"result after pruning: \n {result}")
+
     new_transformer_acc = mmlu(
         transformer=new_transformer,
         tokenizer=tokenizer,
@@ -457,7 +539,8 @@ def main(model_path: str):
         temperature=0.0,
     )
 
-    # wandb_run.log(lbe)
+
+# wandb_run.log(lbe)
 
 
 if __name__ == "__main__":
