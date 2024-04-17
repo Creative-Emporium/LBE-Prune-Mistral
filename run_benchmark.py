@@ -13,19 +13,6 @@ from mistral.model import Transformer
 from mistral.tokenizer import Tokenizer
 
 
-def _construct_mmlu_batch(batch: dict, context: str):
-    """
-    construct
-    """
-    questions = batch["question"]
-
-    prompts = [
-        _construct_mmlu_prompt(question, batch["choices"], i, context)
-        for i, question in enumerate(questions)
-    ]
-    return prompts
-
-
 def _construct_mmlu_prompt(
     question: str, choices: list, answer_index: int, context: str
 ):
@@ -45,44 +32,17 @@ def _construct_mmlu_prompt(
     return prompt
 
 
-def mmlu(
-    transformer: Transformer,
-    tokenizer: Tokenizer,
-    subset_list: list,
-    max_tokens: int = 80,
-    temperature: float = 0.0,
-):
-    """run MMLU benchmark on mistral 7b
-    param: model_path: path to downloaded model weights
-
+def _construct_mmlu_batch(batch: dict, context: str):
     """
-    print(
-        f"running mmlu benchmark with max_tokens {max_tokens} and temperature {temperature}"
-    )
-    ground_truths = []
-    predictions = []
-    five_shot_prompt = ""
-    with open("benchmark_prompts/mmlu_5_shot_prompt.txt", "r") as f:
-        five_shot_prompt = f.read()
+    construct
+    """
+    questions = batch["question"]
 
-    for subset in subset_list:
-        gt, pred = _generate_from_batched_mmlu(
-            transformer=transformer,
-            tokenizer=tokenizer,
-            subset=subset,
-            five_shot_prompt=five_shot_prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        ground_truths.extend(gt)
-        predictions.extend(pred)
-    assert len(ground_truths) == len(predictions)
-    accuracy_metric = evaluate.load("accuracy")
-    result = accuracy_metric.compute(references=ground_truths, predictions=predictions)
-    res_acc = result["accuracy"]
-    print("---------------------------ACCURACY------------------------------------")
-    print(f"Accuracy for MMLU test set: {res_acc}")
-    return res_acc
+    prompts = [
+        _construct_mmlu_prompt(question, batch["choices"], i, context)
+        for i, question in enumerate(questions)
+    ]
+    return prompts
 
 
 def _generate_from_batched_mmlu(
@@ -93,7 +53,9 @@ def _generate_from_batched_mmlu(
     max_tokens: int = 80,
     temperature: float = 0.0,
 ):
-    hf_dataset = datasets.load_dataset("Stevross/mmlu", subset, split="test")
+    hf_dataset = datasets.load_dataset(
+        "Stevross/mmlu", subset, split="test", trust_remote_code=True
+    )
     mmlu_dataset = hf_dataset.with_format(type="torch")
     print(f"type of mmlu dataset is {type(mmlu_dataset)}")
     batch_size = transformer.args.max_batch_size
@@ -139,6 +101,46 @@ def _generate_from_batched_mmlu(
         ground_truths.extend(batch["answer"].tolist())
 
     return ground_truths, predictions
+
+
+def mmlu(
+    transformer: Transformer,
+    tokenizer: Tokenizer,
+    subset_list: list,
+    max_tokens: int = 80,
+    temperature: float = 0.0,
+):
+    """run MMLU benchmark on mistral 7b
+    param: model_path: path to downloaded model weights
+
+    """
+    print(
+        f"running mmlu benchmark with max_tokens {max_tokens} and temperature {temperature}"
+    )
+    ground_truths = []
+    predictions = []
+    five_shot_prompt = ""
+    with open("benchmark_prompts/mmlu_5_shot_prompt.txt", "r") as f:
+        five_shot_prompt = f.read()
+
+    for subset in subset_list:
+        gt, pred = _generate_from_batched_mmlu(
+            transformer=transformer,
+            tokenizer=tokenizer,
+            subset=subset,
+            five_shot_prompt=five_shot_prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        ground_truths.extend(gt)
+        predictions.extend(pred)
+    assert len(ground_truths) == len(predictions)
+    accuracy_metric = evaluate.load("accuracy")
+    result = accuracy_metric.compute(references=ground_truths, predictions=predictions)
+    res_acc = result["accuracy"]
+    print("---------------------------ACCURACY------------------------------------")
+    print(f"Accuracy for MMLU test set: {res_acc}")
+    return res_acc
 
 
 def __construct_hellaswag_prompt(data):
