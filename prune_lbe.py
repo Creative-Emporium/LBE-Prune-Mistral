@@ -1,3 +1,4 @@
+import argparse
 import re
 from pathlib import Path
 
@@ -437,10 +438,45 @@ def fetch_mmlu_batch(batch_size: int, subset_list: list):
     return prompts
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Pruning Hyperparameters")
+    parser.add_argument(
+        "--num_layers_prune",
+        type=int,
+        default=7,
+        help="number of layers to be pruned by the algorithms",
+    )
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        default="lbe_sim",
+        help="name of the algorithm to be run",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=8,
+        help="batch size for evaluating benchmark (only supports mmlu atm)",
+    )
+    parser.add_argument(
+        "--max_tokens",
+        type=int,
+        default=40,
+        help="how many tokens Mistral should generate at most on each request",
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        default="model_weights/mistral-7B-v0.2-instruct",
+        help="path to subdirectory containing model weights and tokenizer; example: model_weights/mistral-7B-v0.2-instruct if you created model_weights/ directory in root of project",
+    )
+    args = parser.parse_args()
+    return args
+
+
 def main(model_path: str):
     # wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
 
-    max_tokens = 40
     subset_list = [
         "abstract_algebra",
         "anatomy",
@@ -500,17 +536,21 @@ def main(model_path: str):
         "virology",
         "world_religions",
     ]  # mmlu topics; loop over them to run entire dataset
-    batch_size: int = 8
+    args = parse_args()
+    model_path = args.model_path
+    max_tokens = args.max_tokens
+    batch_size: int = args.batch_size
+    num_layers_pruned: int = args.num_layers_prune
     prompt = fetch_mmlu_batch(batch_size=batch_size, subset_list=subset_list)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size=len(prompt))
-    # new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = 2)
+    # new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = num_layers_pruned)
     # new_transformer = prune_lbe_similarity(
     #    tokenizer=tokenizer,
     #    transformer=transformer,
     #    prompt=prompt,
     #    max_tokens=max_tokens,
-    #    amount=7,
+    #    amount=num_layers_pruned,
     #    start_at_layer=14,
     # )
     new_transformer = prune_last_token_cosine_similarity(
@@ -518,7 +558,7 @@ def main(model_path: str):
         transformer=transformer,
         prompt=prompt,
         max_tokens=max_tokens,
-        amount=7,
+        amount=num_layers_pruned,
         start_at_layer=14,
     )
     result, logits = generate(
