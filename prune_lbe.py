@@ -256,7 +256,7 @@ def _lbe_similarity_pruning(
         return transformer
     highest_layer_index = transformer.n_local_layers - 1
     lowest_differential: tuple = (
-        31,
+        start_at_layer,
         99999.9,
     )  # (index, differential between index lbe and index + amount lbe)
     for index, entropy in lbe.items():
@@ -363,7 +363,7 @@ def _last_token_arccos_similiarity_pruning(
         return transformer
     highest_layer_index = transformer.n_local_layers - 1
     lowest_differential: tuple = (
-        31,
+        start_at_layer,
         99999.9,
     )  # (index, differential between index last_token_per_layer and index + amount last_token_per_layer)
     for index, _ in last_token_per_layer.items():
@@ -450,7 +450,7 @@ def parse_args():
         "--algorithm",
         type=str,
         default="lbe_sim",
-        help="name of the algorithm to be run",
+        help="name of the algorithm to be run: options: lbe_sim for lbe similarity; last_token_sim for last token similarity; naive for naive pruning algorithm",
     )
     parser.add_argument(
         "--batch_size",
@@ -474,8 +474,59 @@ def parse_args():
     return args
 
 
+def choose_algorithm(
+    algorithm: str,
+    tokenizer: Tokenizer,
+    transformer: Transformer,
+    prompt: list,
+    max_tokens: int,
+    amount: int,
+    start_at_layer: int,
+) -> Transformer:
+    num_layers_before_prune = transformer.n_local_layers
+    new_transformer: Transformer
+    if algorithm == "lbe_sim":
+        print("choosing lbe similarity algorithm")
+        new_transformer = prune_lbe_similarity(
+            tokenizer=tokenizer,
+            transformer=transformer,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            amount=amount,
+            start_at_layer=14,
+        )
+        num_layers_after_prune = new_transformer.n_local_layers
+    elif algorithm == "last_token_sim":
+        print("choosing last token similarity algorithm")
+        new_transformer = prune_last_token_cosine_similarity(
+            tokenizer=tokenizer,
+            transformer=transformer,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            amount=amount,
+            start_at_layer=14,
+        )
+        num_layers_after_prune = new_transformer.n_local_layers
+    elif algorithm == "naive":
+        print("choosing naive algorithm")
+        new_transformer = prune_lbe(
+            tokenizer=tokenizer,
+            transformer=transformer,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            amount=amount,
+        )
+        num_layers_after_prune = new_transformer.n_local_layers
+    else:
+        print(
+            "ERROR! Incorrect algorithm identifier passed to program! correct options:  lbe_sim for lbe similarity; last_token_sim for last token similarity; naive for naive pruning algorithm"
+        )
+        exit(-1)
+    assert num_layers_after_prune < num_layers_before_prune
+    return new_transformer
+
+
 def main(model_path: str):
-    # wandb_run = wandb.init(entity="maxdanelli", project="mistral_prune")
 
     subset_list = [
         "abstract_algebra",
@@ -537,6 +588,7 @@ def main(model_path: str):
         "world_religions",
     ]  # mmlu topics; loop over them to run entire dataset
     args = parse_args()
+    wandb.init(config=args)
     model_path = args.model_path
     max_tokens = args.max_tokens
     batch_size: int = args.batch_size
@@ -544,16 +596,8 @@ def main(model_path: str):
     prompt = fetch_mmlu_batch(batch_size=batch_size, subset_list=subset_list)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size=len(prompt))
-    # new_transformer = prune_lbe(tokenizer = tokenizer, transformer = transformer, prompt = prompt, max_tokens = max_tokens, amount = num_layers_pruned)
-    # new_transformer = prune_lbe_similarity(
-    #    tokenizer=tokenizer,
-    #    transformer=transformer,
-    #    prompt=prompt,
-    #    max_tokens=max_tokens,
-    #    amount=num_layers_pruned,
-    #    start_at_layer=14,
-    # )
-    new_transformer = prune_last_token_cosine_similarity(
+    new_transformer = choose_algorithm(
+        algorithm=args.algorithm,
         tokenizer=tokenizer,
         transformer=transformer,
         prompt=prompt,
@@ -579,8 +623,7 @@ def main(model_path: str):
         temperature=0.0,
     )
 
-
-# wandb_run.log(lbe)
+    wandb.log({"accuracy": new_transformer_acc, "layers removed": num_layers_pruned})
 
 
 if __name__ == "__main__":

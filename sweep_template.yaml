@@ -1,0 +1,16 @@
+program: prune_lbe.py
+
+
+method: grid
+
+
+project: YOUR_PROJECT_NAME
+entity: YOUR_ENTITY
+
+parameters:
+  algorithm:
+    values: 
+      ["last_token_sim"]
+  num_layers_prune:
+    values:
+      [2,3,4,5,6,7,8,9,10,11,12,13,14,15]
