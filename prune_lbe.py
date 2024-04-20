@@ -342,14 +342,17 @@ def _last_token_similarity(
 ) -> float:
     """implements token distance metric from paper The Unreasonable Ineffectiveness of the Deeper Layers by Gromov et al;
     computes distance metric between the last tokens of the start and end layer"""
+
     token_dot_product = torch.dot(
-        last_token_start_layer.flatten(), last_token_end_layer.flatten()
+        last_token_start_layer[-1, :, 0], last_token_end_layer[-1, :, 0]
+    )  # shape of tokens here: (hidden_size,)
+    token_norms_mult = torch.linalg.norm(last_token_start_layer) * torch.linalg.norm(
+        last_token_end_layer
     )
-    token_norms_mult = torch.linalg.vector_norm(
-        last_token_start_layer, dim=None
-    ) * torch.linalg.vector_norm(last_token_end_layer, dim=None)
     arcus_cos_tensor = torch.arccos(token_dot_product / token_norms_mult)
-    return 1 / np.pi * (arcus_cos_tensor.data.cpu().numpy())
+    angular_distance = (1 / np.pi) * (arcus_cos_tensor.data)
+    assert type(angular_distance.item()) is float
+    return angular_distance.item()
 
 
 def _last_token_arccos_similiarity_pruning(
@@ -526,7 +529,7 @@ def choose_algorithm(
     return new_transformer
 
 
-def main(model_path: str):
+def main():
 
     subset_list = [
         "abstract_algebra",
@@ -587,17 +590,16 @@ def main(model_path: str):
         "virology",
         "world_religions",
     ]  # mmlu topics; loop over them to run entire dataset
-    args = parse_args()
-    wandb.init(config=args)
-    model_path = args.model_path
-    max_tokens = args.max_tokens
-    batch_size: int = args.batch_size
-    num_layers_pruned: int = args.num_layers_prune
+    prune_config = parse_args()
+    model_path = prune_config.model_path
+    max_tokens = prune_config.max_tokens
+    batch_size: int = prune_config.batch_size
+    num_layers_pruned: int = prune_config.num_layers_prune
     prompt = fetch_mmlu_batch(batch_size=batch_size, subset_list=subset_list)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size=len(prompt))
     new_transformer = choose_algorithm(
-        algorithm=args.algorithm,
+        algorithm=prune_config.algorithm,
         tokenizer=tokenizer,
         transformer=transformer,
         prompt=prompt,
@@ -622,6 +624,7 @@ def main(model_path: str):
         max_tokens=max_tokens,
         temperature=0.0,
     )
+    wandb.init(config=prune_config)
 
     wandb.log({"accuracy": new_transformer_acc, "layers removed": num_layers_pruned})
 
@@ -631,4 +634,4 @@ if __name__ == "__main__":
     #    "prune": main
     # }
     # )
-    main("model_weights/mistral-7B-v0.2-instruct")
+    main()
