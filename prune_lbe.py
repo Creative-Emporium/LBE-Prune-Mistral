@@ -464,7 +464,7 @@ def parse_args():
     parser.add_argument(
         "--max_tokens",
         type=int,
-        default=40,
+        default=20,
         help="how many tokens Mistral should generate at most on each request",
     )
     parser.add_argument(
@@ -591,6 +591,7 @@ def main():
         "world_religions",
     ]  # mmlu topics; loop over them to run entire dataset
     prune_config = parse_args()
+    wandb.init(config=prune_config)
     model_path = prune_config.model_path
     max_tokens = prune_config.max_tokens
     batch_size: int = prune_config.batch_size
@@ -624,7 +625,6 @@ def main():
         max_tokens=max_tokens,
         temperature=0.0,
     )
-    wandb.init(config=prune_config)
 
     wandb.log({"accuracy": new_transformer_acc, "layers removed": num_layers_pruned})
 
