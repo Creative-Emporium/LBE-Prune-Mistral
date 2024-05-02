@@ -473,6 +473,12 @@ def parse_args():
         default="model_weights/mistral-7B-v0.2-instruct",
         help="path to subdirectory containing model weights and tokenizer; example: model_weights/mistral-7B-v0.2-instruct if you created model_weights/ directory in root of project",
     )
+    parser.add_argument(
+        "--log_wandb",
+        type=bool,
+        default=False,
+        help="should the results be logged to weights and biases; include this in your sweep.yaml and set it to True",
+    )
     args = parser.parse_args()
     return args
 
@@ -591,7 +597,8 @@ def main():
         "world_religions",
     ]  # mmlu topics; loop over them to run entire dataset
     prune_config = parse_args()
-    wandb.init(config=prune_config)
+    if prune_config.log_wandb:
+        wandb.init(config=prune_config)
     model_path = prune_config.model_path
     max_tokens = prune_config.max_tokens
     batch_size: int = prune_config.batch_size
@@ -617,7 +624,6 @@ def main():
     )
     for r in result:
         print(f"result after pruning: \n {result}")
-
     new_transformer_acc = mmlu(
         transformer=new_transformer,
         tokenizer=tokenizer,
@@ -626,7 +632,10 @@ def main():
         temperature=0.0,
     )
 
-    wandb.log({"accuracy": new_transformer_acc, "layers removed": num_layers_pruned})
+    if prune_config.log_wandb:
+        wandb.log(
+            {"accuracy": new_transformer_acc, "layers removed": num_layers_pruned}
+        )
 
 
 if __name__ == "__main__":
