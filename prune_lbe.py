@@ -13,7 +13,8 @@ from main import generate
 from mistral.cache import RotatingBufferCache
 from mistral.model import Transformer
 from mistral.tokenizer import Tokenizer
-from run_benchmark import mmlu
+
+# from run_benchmark import mmlu
 
 
 def get_mistral_attention_activations(
@@ -453,7 +454,7 @@ def parse_args():
         "--algorithm",
         type=str,
         default="lbe_sim",
-        help="name of the algorithm to be run: options: lbe_sim for lbe similarity; last_token_sim for last token similarity; naive for naive pruning algorithm",
+        help="name of the algorithm to be run: options: lbe_sim for lbe similarity; last_token_sim for last token similarity; naive for naive pruning algorithm, baseline for no pruning (vanilla Mistral 7B with all layers)",
     )
     parser.add_argument(
         "--batch_size",
@@ -464,7 +465,7 @@ def parse_args():
     parser.add_argument(
         "--max_tokens",
         type=int,
-        default=20,
+        default=30,
         help="how many tokens Mistral should generate at most on each request",
     )
     parser.add_argument(
@@ -505,6 +506,7 @@ def choose_algorithm(
             start_at_layer=14,
         )
         num_layers_after_prune = new_transformer.n_local_layers
+        assert num_layers_after_prune < num_layers_before_prune
     elif algorithm == "last_token_sim":
         print("choosing last token similarity algorithm")
         new_transformer = prune_last_token_cosine_similarity(
@@ -516,6 +518,7 @@ def choose_algorithm(
             start_at_layer=14,
         )
         num_layers_after_prune = new_transformer.n_local_layers
+        assert num_layers_after_prune < num_layers_before_prune
     elif algorithm == "naive":
         print("choosing naive algorithm")
         new_transformer = prune_lbe(
@@ -526,76 +529,21 @@ def choose_algorithm(
             amount=amount,
         )
         num_layers_after_prune = new_transformer.n_local_layers
+        assert num_layers_after_prune < num_layers_before_prune
+    elif algorithm == "baseline":
+        print(
+            "choosing baseline; no pruning algorithm will be used; evaluating on vanilla Mistral 7B"
+        )
+        new_transformer = transformer
     else:
         print(
             "ERROR! Incorrect algorithm identifier passed to program! correct options:  lbe_sim for lbe similarity; last_token_sim for last token similarity; naive for naive pruning algorithm"
         )
         exit(-1)
-    assert num_layers_after_prune < num_layers_before_prune
     return new_transformer
 
 
 def main():
-
-    subset_list = [
-        "abstract_algebra",
-        "anatomy",
-        "astronomy",
-        "business_ethics",
-        "clinical_knowledge",
-        "college_biology",
-        "college_chemistry",
-        "college_computer_science",
-        "college_mathematics",
-        "college_medicine",
-        "college_physics",
-        "computer_security",
-        "conceptual_physics",
-        "econometrics",
-        "electrical_engineering",
-        "elementary_mathematics",
-        "formal_logic",
-        "global_facts",
-        "high_school_biology",
-        "high_school_chemistry",
-        "high_school_computer_science",
-        "high_school_european_history",
-        "high_school_geography",
-        "high_school_government_and_politics",
-        "high_school_macroeconomics",
-        "high_school_mathematics",
-        "high_school_microeconomics",
-        "high_school_physics",
-        "high_school_psychology",
-        "high_school_statistics",
-        "high_school_us_history",
-        "high_school_world_history",
-        "human_aging",
-        "human_sexuality",
-        "international_law",
-        "jurisprudence",
-        "logical_fallacies",
-        "machine_learning",
-        "management",
-        "marketing",
-        "medical_genetics",
-        "miscellaneous",
-        "moral_disputes",
-        "moral_scenarios",
-        "nutrition",
-        "philosophy",
-        "prehistory",
-        "professional_accounting",
-        "professional_law",
-        "professional_medicine",
-        "professional_psychology",
-        "public_relations",
-        "security_studies",
-        "sociology",
-        "us_foreign_policy",
-        "virology",
-        "world_religions",
-    ]  # mmlu topics; loop over them to run entire dataset
     prune_config = parse_args()
     if prune_config.log_wandb:
         wandb.init(config=prune_config)
@@ -624,13 +572,18 @@ def main():
     )
     for r in result:
         print(f"result after pruning: \n {result}")
-    new_transformer_acc = mmlu(
-        transformer=new_transformer,
+    from deepeval.benchmarks import MMLU
+
+    from mistral_wrapper_lm_eval import PrunedMistral
+
+    pruned_model_eval = PrunedMistral(
+        model=new_transformer,
         tokenizer=tokenizer,
-        subset_list=subset_list,
-        max_tokens=max_tokens,
         temperature=0.0,
+        max_tokens=max_tokens,
     )
+    benchmark = MMLU()
+    new_transformer_acc = benchmark.evaluate(model=pruned_model_eval)
 
     if prune_config.log_wandb:
         wandb.log(
@@ -639,8 +592,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # fire.Fire({
-    #    "prune": main
-    # }
-    # )
     main()
