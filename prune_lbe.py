@@ -544,6 +544,65 @@ def choose_algorithm(
 
 
 def main():
+    subset_list = [
+        "abstract_algebra",
+        "anatomy",
+        "astronomy",
+        "business_ethics",
+        "clinical_knowledge",
+        "college_biology",
+        "college_chemistry",
+        "college_computer_science",
+        "college_mathematics",
+        "college_medicine",
+        "college_physics",
+        "computer_security",
+        "conceptual_physics",
+        "econometrics",
+        "electrical_engineering",
+        "elementary_mathematics",
+        "formal_logic",
+        "global_facts",
+        "high_school_biology",
+        "high_school_chemistry",
+        "high_school_computer_science",
+        "high_school_european_history",
+        "high_school_geography",
+        "high_school_government_and_politics",
+        "high_school_macroeconomics",
+        "high_school_mathematics",
+        "high_school_microeconomics",
+        "high_school_physics",
+        "high_school_psychology",
+        "high_school_statistics",
+        "high_school_us_history",
+        "high_school_world_history",
+        "human_aging",
+        "human_sexuality",
+        "international_law",
+        "jurisprudence",
+        "logical_fallacies",
+        "machine_learning",
+        "management",
+        "marketing",
+        "medical_genetics",
+        "miscellaneous",
+        "moral_disputes",
+        "moral_scenarios",
+        "nutrition",
+        "philosophy",
+        "prehistory",
+        "professional_accounting",
+        "professional_law",
+        "professional_medicine",
+        "professional_psychology",
+        "public_relations",
+        "security_studies",
+        "sociology",
+        "us_foreign_policy",
+        "virology",
+        "world_religions",
+    ]  # mmlu topics;
     prune_config = parse_args()
     if prune_config.log_wandb:
         wandb.init(config=prune_config)
@@ -583,11 +642,17 @@ def main():
         max_tokens=max_tokens,
     )
     benchmark = MMLU()
-    new_transformer_acc = benchmark.evaluate(model=pruned_model_eval)
-
+    benchmark.evaluate(model=pruned_model_eval)
+    all_tasks_acc = benchmark.overall_score
+    tasks_acc_df = benchmark.task_scores
+    tasks_acc_table = wandb.Table(dataframe=tasks_acc_df)
     if prune_config.log_wandb:
         wandb.log(
-            {"accuracy": new_transformer_acc, "layers removed": num_layers_pruned}
+            {
+                "all tasks accuracy": all_tasks_acc,
+                "subtask accuracy": tasks_acc_table,
+                "layers removed": num_layers_pruned,
+            }
         )
 
 
