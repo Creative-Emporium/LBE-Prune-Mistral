@@ -36,6 +36,8 @@ class PrunedMistral(DeepEvalBaseLLM):
         )
         answer = result[0].rsplit(sep="[/INST]", maxsplit=1)[1]
         answer = answer.strip()
+        if len(answer) == 0:
+            answer = " "  # return non-zero string to avoid crashes during eval
         return answer
 
     async def a_generate(self, prompt: str) -> str:
