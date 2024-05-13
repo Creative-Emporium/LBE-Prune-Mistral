@@ -1,56 +1,40 @@
 import argparse
-import re
 from pathlib import Path
 
 import datasets
-import fire
 import numpy as np
 import torch
-from torch import nn
 
 import wandb
 from main import generate
-from mistral.cache import RotatingBufferCache
 from mistral.model import Transformer
 from mistral.tokenizer import Tokenizer
 
-# from run_benchmark import mmlu
 
-
-def get_mistral_attention_activations(
-    tokenizer: Tokenizer,
-    transformer: Transformer,
-    prompt: list,
-    max_tokens: int = 40,
-    temperature: float = 0.0,
+def get_mistral_last_token_output_activations(
+        tokenizer: Tokenizer,
+        transformer: Transformer,
+        prompt: list,
+        max_tokens: int = 40,
+        temperature: float = 0.0,
 ):
     """
-    extracts activations of each Transformer Block after self attention layer (before residual connection)
-    """
-    activations = {k: [] for k in range(transformer.n_local_layers)}
-    activations_query = {k: [] for k in range(transformer.n_local_layers)}
-
-    query_tensor_size = 0
-    for p in prompt:
-        query_tensor_size += len(tokenizer.encode(p))
+    extracts activations of each Transformer Block at the output; extracts last token only
+    used for The Unreasonable Ineffectiveness of the Deeper Layers by Gromov et al."""
+    last_output_token_per_layer = {k: [] for k in range(transformer.n_local_layers)}
 
     # helper method to attach forward hook to layer; returns hook method
     def get_activation(index: int):
 
         def hook(module, input, output):
-            if output.detach().size() == torch.Size(
-                [query_tensor_size, 4096]
-            ):  # check if current activations belong to input query (check for size of query length)
-                activations_query[index].append(output.detach())
-            else:
-                activations[index].append(output.detach())
-            # print(f"activation at module {module}: {output.detach().size()}")
+            last_output_token_per_layer[index] = output.detach()[-1]
+            print(f"activation at module {module}: {output.detach()[-1].size()}")
 
         return hook
 
     hook_handles = []  # list of hooks handles for cleanup
     for index, layer in transformer.layers.items():
-        handle = layer.attention.wo.register_forward_hook(get_activation(int(index)))
+        handle = layer.register_forward_hook(get_activation(int(index)))
         hook_handles.append(handle)
 
     result, _logprobs = generate(
@@ -61,40 +45,27 @@ def get_mistral_attention_activations(
     for handle in hook_handles:  # cleanup handles
         handle.remove()
 
-    for index, activation in activations.items():
+    for index, activation in last_output_token_per_layer.items():
         assert activation is not None
         # print(f"---------------------- layer {index} ---------------------------------")
         # for index_t, tensor in enumerate(activation):
         # print(f"activation size of token {index_t}: {tensor.size()}")
 
-    last_token_per_layer = {}  # saves the last generated token at each layer
-    for layer_index, activation_list in activations.items():
-        last_token_per_layer[layer_index] = activation_list[-1]
-        print(
-            f"last token of layer {layer_index} is {last_token_per_layer[layer_index].size()}"
-        )
-
-    for layer_index, activation_list in activations.items():
-        activations[layer_index] = torch.stack(activation_list, dim=-1)
-
-    for layer_index, activation_list in activations_query.items():
-        activations_query[layer_index] = torch.stack(activation_list, dim=-1)
-
-    return activations, last_token_per_layer
+    return last_output_token_per_layer
 
 
 def get_mistral_linear_activations(
-    tokenizer: Tokenizer,
-    transformer: Transformer,
-    prompt: list,
-    max_tokens: int = 40,
-    temperature: float = 0.0,
+        tokenizer: Tokenizer,
+        transformer: Transformer,
+        prompt: list,
+        max_tokens: int = 40,
+        temperature: float = 0.0,
 ):
     """
     extracts activations of each TransformerBlock after fully connected (linear) layer (before residual connection)
     """
     activations_dict_size = transformer.n_local_layers
-    activations = {k: [] for k in range(activations_dict_size)}
+    activations_generated = {k: [] for k in range(activations_dict_size)}
     activations_query = {k: [] for k in range(activations_dict_size)}
 
     query_tensor_size = 0
@@ -106,28 +77,28 @@ def get_mistral_linear_activations(
 
         def hook(module, input, output):
             if output.detach().size() == torch.Size(
-                [query_tensor_size, 4096]
+                    [query_tensor_size, 4096]
             ):  # check if current activations belong to input query (check for size of query length)
                 activations_query[index].append(output.detach())
             else:
-                activations[index].append(output.detach())
+                activations_generated[index].append(output.detach())
             # print(f"activation at module {module}: {output.detach().size()}")
 
         return hook
 
     # input tensors need to be extracted and later substracted from measured activations
-    inputs = {k: [] for k in range(activations_dict_size)}
+    inputs_generated = {k: [] for k in range(activations_dict_size)}
     inputs_query = {k: [] for k in range(activations_dict_size)}
 
     def get_input(index: int):
 
         def hook(module, input, output):
             if input[0].detach().size() == torch.Size(
-                [query_tensor_size, 4096]
+                    [query_tensor_size, 4096]
             ):  # check if current input is input query (check for size of query length)
                 inputs_query[index].append(input[0].detach())
             else:
-                inputs[index].append(input[0].detach())
+                inputs_generated[index].append(input[0].detach())
 
         return hook
 
@@ -144,7 +115,7 @@ def get_mistral_linear_activations(
     result, _logprobs = generate(
         prompt, transformer, tokenizer, max_tokens=max_tokens, temperature=temperature
     )
-    assert len(activations) == len(inputs) and len(activations_query) == len(
+    assert len(activations_generated) == len(inputs_generated) and len(activations_query) == len(
         inputs_query
     )
 
@@ -156,10 +127,10 @@ def get_mistral_linear_activations(
         handle.remove()
 
     # substract inputs from activations to avoid signal pollution by recurrent connection after attention layer
-    for layer_index, activation_list in activations.items():
+    for layer_index, activation_list in activations_generated.items():
         for index, activation in enumerate(activation_list):
             activation_list[index] = torch.sub(
-                activation_list[index], inputs[layer_index][index], alpha=1
+                activation_list[index], inputs_generated[layer_index][index], alpha=1
             )
 
     for layer_index, activation_list in activations_query.items():
@@ -168,10 +139,10 @@ def get_mistral_linear_activations(
                 activation_list[index], inputs_query[layer_index][index], alpha=1
             )
 
-    for layer_index, activation_list in activations.items():
+    for layer_index, activation_list in activations_generated.items():
         if len(activation_list) == 0:
             print(f"list is empty at layer index: {layer_index}")
-        activations[layer_index] = torch.stack(activation_list, dim=-1)
+        activations_generated[layer_index] = torch.stack(activation_list, dim=-1)
         # print(f"size of activations at layer {layer_index}: {activations[layer_index].size()}")
 
     for layer_index, activation_list in activations_query.items():
@@ -180,7 +151,7 @@ def get_mistral_linear_activations(
         activations_query[layer_index] = torch.stack(activation_list, dim=-1)
         # print(f"size of query activations at layer {layer_index}: {activations_query[layer_index].size()}")
 
-    return activations, activations_query
+    return activations_generated, activations_query
 
 
 def layerwise_batch_entropy(x):
@@ -194,10 +165,7 @@ def layerwise_batch_entropy(x):
     # print(f"shape after flatten {x.size()}")
     x_std = torch.std(x, dim=0)
     # print(f"shape of std: {x_std.size()}")
-    entropies = 0.5 * torch.log(np.pi * np.e * x_std**2 + 1)
-    # sigmoid = torch.nn.Sigmoid()
-
-    # entropies = sigmoid(entropies) # map non normalized entropies to a range between 0 and 1
+    entropies = 0.5 * torch.log(np.pi * np.e * x_std ** 2 + 1)
     return torch.mean(entropies)
 
 
@@ -217,7 +185,7 @@ def compute_lbe(activations: dict):
 
 
 def _reindex_pruned_transformer(
-    start_index: int, amount_removed: int, transformer: Transformer
+        start_index: int, amount_removed: int, transformer: Transformer
 ) -> Transformer:
     print(f"length of transformer.layers {len(transformer.layers)}")
     for index in range(start_index, len(transformer.layers) + amount_removed, 1):
@@ -250,7 +218,7 @@ def _prune_single_layer(lbe: dict, transformer: Transformer) -> Transformer:
 
 
 def _lbe_similarity_pruning(
-    lbe: dict, transformer: Transformer, amount: int, start_at_layer: int
+        lbe: dict, transformer: Transformer, amount: int, start_at_layer: int
 ) -> Transformer:
     if amount < 1:
         print("amount must be more than 1! Aborting without similarity pruning!!")
@@ -294,14 +262,15 @@ def _log_ratio(x: float, y: float):
 
 
 def prune_lbe(
-    tokenizer: Tokenizer,
-    transformer: Transformer,
-    prompt: list,
-    max_tokens: int,
-    amount: int = 2,
+        tokenizer: Tokenizer,
+        transformer: Transformer,
+        prompt: list,
+        max_tokens: int,
+        amount: int = 2,
 ) -> Transformer:
     """
-    prunes network using naive algorithm: select maximal lbe at each iteration, prune layer with maximal lbe; iterate until amount layers have been removed
+    prunes network using naive algorithm: select maximal lbe at each iteration, prune layer with maximal lbe;
+    iterate until amount layers have been removed
     """
     pruned_transformer = transformer
     for i in range(amount):
@@ -317,14 +286,13 @@ def prune_lbe(
 
 
 def prune_lbe_similarity(
-    tokenizer: Tokenizer,
-    transformer: Transformer,
-    prompt: list,
-    max_tokens: int,
-    amount: int = 2,
-    start_at_layer=16,
+        tokenizer: Tokenizer,
+        transformer: Transformer,
+        prompt: list,
+        max_tokens: int,
+        amount: int = 2,
+        start_at_layer=16,
 ) -> Transformer:
-
     activations, _ = get_mistral_linear_activations(
         tokenizer=tokenizer,
         transformer=transformer,
@@ -339,28 +307,28 @@ def prune_lbe_similarity(
 
 
 def _last_token_similarity(
-    last_token_start_layer: torch.Tensor, last_token_end_layer: torch.Tensor
+        last_token_start_layer: torch.Tensor, last_token_end_layer: torch.Tensor
 ) -> float:
     """implements token distance metric from paper The Unreasonable Ineffectiveness of the Deeper Layers by Gromov et al;
     computes distance metric between the last tokens of the start and end layer"""
 
     token_dot_product = torch.dot(
-        last_token_start_layer[-1, :, 0], last_token_end_layer[-1, :, 0]
-    )  # shape of tokens here: (hidden_size,)
+        last_token_start_layer, last_token_end_layer
+    )
     token_norms_mult = torch.linalg.norm(last_token_start_layer) * torch.linalg.norm(
         last_token_end_layer
     )
-    arcus_cos_tensor = torch.arccos(token_dot_product / token_norms_mult)
-    angular_distance = (1 / np.pi) * (arcus_cos_tensor.data)
+    arc_cos_tensor = torch.arccos(token_dot_product / token_norms_mult)
+    angular_distance = (1 / np.pi) * arc_cos_tensor.data
     assert type(angular_distance.item()) is float
     return angular_distance.item()
 
 
 def _last_token_arccos_similiarity_pruning(
-    last_token_per_layer: dict,
-    transformer: Transformer,
-    amount: int,
-    start_at_layer: int,
+        last_token_per_layer: dict,
+        transformer: Transformer,
+        amount: int,
+        start_at_layer: int,
 ) -> Transformer:
     if amount < 1:
         print("amount must be more than 1! Aborting without similarity pruning!!")
@@ -378,16 +346,16 @@ def _last_token_arccos_similiarity_pruning(
         if index < start_at_layer:
             continue
         differential = _last_token_similarity(
-            last_token_start_layer=last_token_per_layer[index],
+            last_token_start_layer=last_token_per_layer[index-1],  # index -1 because we need input to layer of index, which we get by taking the previous layer output
             last_token_end_layer=last_token_per_layer[comparison_index],
         )
         if differential < lowest_differential[1]:
             lowest_differential = (index, differential)
 
-    target_index = lowest_differential[0] + amount + 1
+    target_index = lowest_differential[0] + amount
     if target_index > highest_layer_index:
         target_index = highest_layer_index
-    for index in range(lowest_differential[0] + 1, target_index, 1):
+    for index in range(lowest_differential[0], target_index, 1):
         print(
             f"removing layer with index {index}; should be between {lowest_differential[0]} and {target_index}"
         )
@@ -403,15 +371,15 @@ def _last_token_arccos_similiarity_pruning(
 
 
 def prune_last_token_cosine_similarity(
-    tokenizer: Tokenizer,
-    transformer: Transformer,
-    prompt: list,
-    max_tokens: int,
-    amount: int = 2,
-    start_at_layer=16,
+        tokenizer: Tokenizer,
+        transformer: Transformer,
+        prompt: list,
+        max_tokens: int,
+        amount: int = 2,
+        start_at_layer=16,
 ) -> Transformer:
     """implements approach by paper The Unreasonable Ineffectiveness of the Deeper Layers by Gromov et al"""
-    _, last_token_per_layer = get_mistral_linear_activations(
+    last_token_per_layer = get_mistral_last_token_output_activations(
         tokenizer=tokenizer,
         transformer=transformer,
         prompt=prompt,
@@ -485,13 +453,13 @@ def parse_args():
 
 
 def choose_algorithm(
-    algorithm: str,
-    tokenizer: Tokenizer,
-    transformer: Transformer,
-    prompt: list,
-    max_tokens: int,
-    amount: int,
-    start_at_layer: int,
+        algorithm: str,
+        tokenizer: Tokenizer,
+        transformer: Transformer,
+        prompt: list,
+        max_tokens: int,
+        amount: int,
+        start_at_layer: int = 14,
 ) -> Transformer:
     num_layers_before_prune = transformer.n_local_layers
     new_transformer: Transformer
@@ -503,7 +471,7 @@ def choose_algorithm(
             prompt=prompt,
             max_tokens=max_tokens,
             amount=amount,
-            start_at_layer=14,
+            start_at_layer=start_at_layer,
         )
         num_layers_after_prune = new_transformer.n_local_layers
         assert num_layers_after_prune < num_layers_before_prune
@@ -515,7 +483,7 @@ def choose_algorithm(
             prompt=prompt,
             max_tokens=max_tokens,
             amount=amount,
-            start_at_layer=14,
+            start_at_layer=start_at_layer,
         )
         num_layers_after_prune = new_transformer.n_local_layers
         assert num_layers_after_prune < num_layers_before_prune
@@ -622,15 +590,13 @@ def main():
         amount=num_layers_pruned,
         start_at_layer=14,
     )
-    result, logits = generate(
+    result, _ = generate(
         prompts=prompt,
         model=new_transformer,
         tokenizer=tokenizer,
         max_tokens=max_tokens,
         temperature=0.0,
     )
-    for r in result:
-        print(f"result after pruning: \n {result}")
     from deepeval.benchmarks import MMLU
 
     from mistral_wrapper_lm_eval import PrunedMistral
