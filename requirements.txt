@@ -6,5 +6,6 @@ simple-parsing
 scikit-learn
 evaluate
 datasets
+numpy
 wandb
 deepeval
