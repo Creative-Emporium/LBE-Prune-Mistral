@@ -8,4 +8,4 @@ evaluate
 datasets
 numpy
 wandb
-deepeval
+deepeval==0.21.36
