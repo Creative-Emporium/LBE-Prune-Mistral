@@ -66,7 +66,6 @@ def get_mistral_linear_activations(
     """
     activations_dict_size = transformer.n_local_layers
     activations_generated = {k: [] for k in range(activations_dict_size)}
-    activations_query = {k: [] for k in range(activations_dict_size)}
 
     query_tensor_size = 0
     for p in prompt:
@@ -78,8 +77,8 @@ def get_mistral_linear_activations(
         def hook(module, input, output):
             if output.detach().size() == torch.Size(
                 [query_tensor_size, 4096]
-            ):  # check if current activations belong to input query (check for size of query length)
-                activations_query[index].append(output.detach())
+            ):  # check if current activations belong to input query tokens (check for size of query length), skip those
+                return
             else:
                 activations_generated[index].append(output.detach())
             # print(f"activation at module {module}: {output.detach().size()}")
@@ -88,15 +87,14 @@ def get_mistral_linear_activations(
 
     # input tensors need to be extracted and later substracted from measured activations
     inputs_generated = {k: [] for k in range(activations_dict_size)}
-    inputs_query = {k: [] for k in range(activations_dict_size)}
 
     def get_input(index: int):
 
         def hook(module, input, output):
             if input[0].detach().size() == torch.Size(
                 [query_tensor_size, 4096]
-            ):  # check if current input is input query (check for size of query length)
-                inputs_query[index].append(input[0].detach())
+            ):  # check if current input belong input query tokens (check for size of query length), skip those
+                return
             else:
                 inputs_generated[index].append(input[0].detach())
 
@@ -115,9 +113,7 @@ def get_mistral_linear_activations(
     result, _logprobs = generate(
         prompt, transformer, tokenizer, max_tokens=max_tokens, temperature=temperature
     )
-    assert len(activations_generated) == len(inputs_generated) and len(
-        activations_query
-    ) == len(inputs_query)
+    assert len(activations_generated) == len(inputs_generated)
 
     print(f"Answer of Mistral: {result}")
     for handle in activation_hook_handles:  # cleanup handles
@@ -133,25 +129,13 @@ def get_mistral_linear_activations(
                 activation_list[index], inputs_generated[layer_index][index], alpha=1
             )
 
-    for layer_index, activation_list in activations_query.items():
-        for index, activation in enumerate(activation_list):
-            activation_list[index] = torch.sub(
-                activation_list[index], inputs_query[layer_index][index], alpha=1
-            )
-
     for layer_index, activation_list in activations_generated.items():
         if len(activation_list) == 0:
             print(f"list is empty at layer index: {layer_index}")
         activations_generated[layer_index] = torch.stack(activation_list, dim=-1)
         # print(f"size of activations at layer {layer_index}: {activations[layer_index].size()}")
 
-    for layer_index, activation_list in activations_query.items():
-        if len(activation_list) == 0:
-            print(f"list is empty at layer index: {layer_index}")
-        activations_query[layer_index] = torch.stack(activation_list, dim=-1)
-        # print(f"size of query activations at layer {layer_index}: {activations_query[layer_index].size()}")
-
-    return activations_generated, activations_query
+    return activations_generated
 
 
 def layerwise_batch_entropy(x):
@@ -274,7 +258,7 @@ def prune_lbe(
     """
     pruned_transformer = transformer
     for i in range(amount):
-        activations, _ = get_mistral_linear_activations(
+        activations = get_mistral_linear_activations(
             tokenizer=tokenizer,
             transformer=pruned_transformer,
             prompt=prompt,
@@ -293,7 +277,7 @@ def prune_lbe_similarity(
     amount: int = 2,
     start_at_layer=16,
 ) -> Transformer:
-    activations, _ = get_mistral_linear_activations(
+    activations = get_mistral_linear_activations(
         tokenizer=tokenizer,
         transformer=transformer,
         prompt=prompt,
