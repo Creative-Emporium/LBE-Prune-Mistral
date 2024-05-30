@@ -412,12 +412,12 @@ def parse_args() -> argparse.Namespace:
         "--batch_size",
         type=int,
         default=8,
-        help="batch size for evaluating benchmark (only supports mmlu atm)",
+        help="batch size for computing LBE forward pass",
     )
     parser.add_argument(
         "--max_tokens",
         type=int,
-        default=30,
+        default=20,
         help="how many tokens Mistral should generate at most on each request",
     )
     parser.add_argument(
@@ -582,7 +582,6 @@ def main():
         temperature=0.0,
     )
     from deepeval.benchmarks import MMLU
-
     from mistral_wrapper_lm_eval import PrunedMistral
 
     pruned_model_eval = PrunedMistral(
