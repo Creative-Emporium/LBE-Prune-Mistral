@@ -185,7 +185,7 @@ def _reindex_pruned_transformer(
     return transformer
 
 
-def _prune_single_layer(lbe: dict, transformer: Transformer) -> Transformer:
+def _prune_single_layer(lbe: dict, transformer: Transformer):
     max_entropy: tuple = (0, 0.0)  # (index, lbe)
     last_layer_index = transformer.n_local_layers - 1
     for index, token_entropy in lbe.items():
@@ -198,12 +198,12 @@ def _prune_single_layer(lbe: dict, transformer: Transformer) -> Transformer:
     print(f"layer with index {max_entropy[0]} removed")
     assert removed_block is not None
     transformer = _reindex_pruned_transformer(max_entropy[0], 1, transformer)
-    return transformer
+    return transformer, max_entropy[0]
 
 
 def _lbe_similarity_pruning(
     lbe: dict, transformer: Transformer, amount: int, start_at_layer: int
-) -> Transformer:
+):
     if amount < 1:
         print("amount must be more than 1! Aborting without similarity pruning!!")
         return transformer
@@ -226,37 +226,41 @@ def _lbe_similarity_pruning(
     target_index = lowest_differential[0] + amount + 1
     if target_index > highest_layer_index:
         target_index = highest_layer_index
+
+    layers_removed = []
     for index in range(lowest_differential[0] + 1, target_index, 1):
         print(
             f"removing layer with index {index}; should be between {lowest_differential[0]} and {target_index}"
         )
         removed_layer = transformer.layers.pop(str(index))
         assert removed_layer is not None
+        layers_removed.append(index)
 
     transformer = _reindex_pruned_transformer(
         start_index=(lowest_differential[0] + 1),
         amount_removed=amount,
         transformer=transformer,
     )
-    return transformer
+    return transformer, layers_removed
 
 
 def _log_ratio(x: float, y: float):
     return abs(np.log2(x / y))
 
 
-def prune_lbe(
+def prune_lbe_naive(
     tokenizer: Tokenizer,
     transformer: Transformer,
     prompt: list,
     max_tokens: int,
     amount: int = 2,
-) -> Transformer:
+):
     """
     prunes network using naive algorithm: select maximal lbe at each iteration, prune layer with maximal lbe;
     iterate until amount layers have been removed
     """
     pruned_transformer = transformer
+    layers_removed = []
     for i in range(amount):
         activations = get_mistral_linear_activations(
             tokenizer=tokenizer,
@@ -265,8 +269,9 @@ def prune_lbe(
             max_tokens=max_tokens,
         )
         lbe = compute_lbe(activations)
-        pruned_transformer = _prune_single_layer(lbe, pruned_transformer)
-    return pruned_transformer
+        pruned_transformer, removed_index = _prune_single_layer(lbe, pruned_transformer)
+        layers_removed.append(removed_index)
+    return pruned_transformer, layers_removed
 
 
 def prune_lbe_similarity(
@@ -276,7 +281,7 @@ def prune_lbe_similarity(
     max_tokens: int,
     amount: int = 2,
     start_at_layer=16,
-) -> Transformer:
+):
     activations = get_mistral_linear_activations(
         tokenizer=tokenizer,
         transformer=transformer,
@@ -284,10 +289,10 @@ def prune_lbe_similarity(
         max_tokens=max_tokens,
     )
     lbe = compute_lbe(activations)
-    transformer = _lbe_similarity_pruning(
+    transformer, layers_removed = _lbe_similarity_pruning(
         lbe=lbe, transformer=transformer, amount=amount, start_at_layer=start_at_layer
     )
-    return transformer
+    return transformer, layers_removed
 
 
 def _last_token_similarity(
@@ -311,7 +316,7 @@ def _last_token_arccos_similiarity_pruning(
     transformer: Transformer,
     amount: int,
     start_at_layer: int,
-) -> Transformer:
+):
     if amount < 1:
         print("amount must be more than 1! Aborting without similarity pruning!!")
         return transformer
@@ -339,19 +344,22 @@ def _last_token_arccos_similiarity_pruning(
     target_index = lowest_differential[0] + amount
     if target_index > highest_layer_index:
         target_index = highest_layer_index
+
+    layers_removed = []
     for index in range(lowest_differential[0], target_index, 1):
         print(
             f"removing layer with index {index}; should be between {lowest_differential[0]} and {target_index}"
         )
         removed_layer = transformer.layers.pop(str(index))
         assert removed_layer is not None
+        layers_removed.append(index)
 
     transformer = _reindex_pruned_transformer(
         start_index=(lowest_differential[0] + 1),
         amount_removed=amount,
         transformer=transformer,
     )
-    return transformer
+    return transformer, layers_removed
 
 
 def prune_last_token_cosine_similarity(
@@ -361,7 +369,7 @@ def prune_last_token_cosine_similarity(
     max_tokens: int,
     amount: int = 2,
     start_at_layer=16,
-) -> Transformer:
+):
     """implements approach by paper The Unreasonable Ineffectiveness of the Deeper Layers by Gromov et al"""
     last_token_per_layer = get_mistral_last_token_output_activations(
         tokenizer=tokenizer,
@@ -369,13 +377,13 @@ def prune_last_token_cosine_similarity(
         prompt=prompt,
         max_tokens=max_tokens,
     )
-    transformer = _last_token_arccos_similiarity_pruning(
+    transformer, layers_removed = _last_token_arccos_similiarity_pruning(
         last_token_per_layer=last_token_per_layer,
         transformer=transformer,
         amount=amount,
         start_at_layer=start_at_layer,
     )
-    return transformer
+    return transformer, layers_removed
 
 
 def fetch_mmlu_batch(batch_size: int, subset_list: list):
@@ -444,12 +452,12 @@ def choose_algorithm(
     max_tokens: int,
     amount: int,
     start_at_layer: int = 14,
-) -> Transformer:
+):
     num_layers_before_prune = transformer.n_local_layers
     new_transformer: Transformer
     if algorithm == "lbe_sim":
         print("choosing lbe similarity algorithm")
-        new_transformer = prune_lbe_similarity(
+        new_transformer, layers_removed = prune_lbe_similarity(
             tokenizer=tokenizer,
             transformer=transformer,
             prompt=prompt,
@@ -461,7 +469,7 @@ def choose_algorithm(
         assert num_layers_after_prune < num_layers_before_prune
     elif algorithm == "last_token_sim":
         print("choosing last token similarity algorithm")
-        new_transformer = prune_last_token_cosine_similarity(
+        new_transformer, layers_removed = prune_last_token_cosine_similarity(
             tokenizer=tokenizer,
             transformer=transformer,
             prompt=prompt,
@@ -473,7 +481,7 @@ def choose_algorithm(
         assert num_layers_after_prune < num_layers_before_prune
     elif algorithm == "naive":
         print("choosing naive algorithm")
-        new_transformer = prune_lbe(
+        new_transformer, layers_removed = prune_lbe_naive(
             tokenizer=tokenizer,
             transformer=transformer,
             prompt=prompt,
@@ -487,12 +495,46 @@ def choose_algorithm(
             "choosing baseline; no pruning algorithm will be used; evaluating on vanilla Mistral 7B"
         )
         new_transformer = transformer
+        layers_removed = []
     else:
         print(
             "ERROR! Incorrect algorithm identifier passed to program! correct options:  lbe_sim for lbe similarity; last_token_sim for last token similarity; naive for naive pruning algorithm"
         )
         exit(-1)
-    return new_transformer
+    return new_transformer, layers_removed
+
+
+def eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, tokenizer):
+    from deepeval.benchmarks import MMLU
+    from mistral_wrapper_lm_eval import PrunedMistral
+
+    pruned_model_eval = PrunedMistral(
+        model=new_transformer,
+        tokenizer=tokenizer,
+        temperature=0.0,
+        max_tokens=max_tokens,
+    )
+    benchmark = MMLU()
+    benchmark.evaluate(model=pruned_model_eval)
+    all_tasks_acc = benchmark.overall_score
+    tasks_acc_df = benchmark.task_scores
+    tasks_acc_table = wandb.Table(dataframe=tasks_acc_df)
+    if prune_config.log_wandb:
+        wandb.log(
+            {
+                "all tasks accuracy": all_tasks_acc,
+                "subtask accuracy": tasks_acc_table,
+                "layers removed": num_layers_pruned,
+            }
+        )
+
+
+def log_layers_removed(layers_removed: list):
+    if len(layers_removed) == 0:
+        print("no layers removed")
+        return
+    for layer_index in layers_removed:
+        print(f"removed layer {layer_index}")
 
 
 def main():
@@ -565,7 +607,7 @@ def main():
     prompt = fetch_mmlu_batch(batch_size=batch_size, subset_list=subset_list)
     tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
     transformer = Transformer.from_folder(Path(model_path), max_batch_size=len(prompt))
-    new_transformer = choose_algorithm(
+    new_transformer, layers_removed = choose_algorithm(
         algorithm=prune_config.algorithm,
         tokenizer=tokenizer,
         transformer=transformer,
@@ -581,28 +623,8 @@ def main():
         max_tokens=max_tokens,
         temperature=0.0,
     )
-    from deepeval.benchmarks import MMLU
-    from mistral_wrapper_lm_eval import PrunedMistral
-
-    pruned_model_eval = PrunedMistral(
-        model=new_transformer,
-        tokenizer=tokenizer,
-        temperature=0.0,
-        max_tokens=max_tokens,
-    )
-    benchmark = MMLU()
-    benchmark.evaluate(model=pruned_model_eval)
-    all_tasks_acc = benchmark.overall_score
-    tasks_acc_df = benchmark.task_scores
-    tasks_acc_table = wandb.Table(dataframe=tasks_acc_df)
-    if prune_config.log_wandb:
-        wandb.log(
-            {
-                "all tasks accuracy": all_tasks_acc,
-                "subtask accuracy": tasks_acc_table,
-                "layers removed": num_layers_pruned,
-            }
-        )
+    log_layers_removed(layers_removed)
+    # eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, tokenizer)
 
 
 if __name__ == "__main__":
