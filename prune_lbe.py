@@ -141,6 +141,7 @@ def get_mistral_linear_activations(
 def layerwise_batch_entropy(x):
     """Estimate the differential entropy by assuming a gaussian distribution of
     values for different samples of a set of token activations.
+    taken from https://github.com/peerdavid/layerwise-batch-entropy
     """
     if x.shape[0] <= 1:
         raise Exception("The batch entropy can only be calculated for |batch| > 1.")
@@ -529,12 +530,17 @@ def eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, toke
         )
 
 
-def log_layers_removed(layers_removed: list):
+def wandb_log_layers_removed(layers_removed: list, prune_config):
     if len(layers_removed) == 0:
         print("no layers removed")
         return
     for layer_index in layers_removed:
         print(f"removed layer {layer_index}")
+    if prune_config.log_wandb:
+        columns = ["algorithm used", "num layers pruned", "indices of pruned layers"]
+        data = [[prune_config.algorithm, prune_config.num_layers_prune, layers_removed]]
+        wandb_table = wandb.Table(columns=columns, data=data)
+        wandb.log({"indices_removed": wandb_table})
 
 
 def main():
@@ -616,6 +622,7 @@ def main():
         amount=num_layers_pruned,
         start_at_layer=14,
     )
+    wandb_log_layers_removed(layers_removed, prune_config)
     result, _ = generate(
         prompts=prompt,
         model=new_transformer,
@@ -623,8 +630,7 @@ def main():
         max_tokens=max_tokens,
         temperature=0.0,
     )
-    log_layers_removed(layers_removed)
-    # eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, tokenizer)
+    eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, tokenizer)
 
 
 if __name__ == "__main__":
