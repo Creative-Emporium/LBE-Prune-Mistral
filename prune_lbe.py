@@ -28,7 +28,6 @@ def get_mistral_last_token_output_activations(
 
         def hook(module, input, output):
             last_output_token_per_layer[index] = output.detach()[-1]
-            # print(f"activation at module {module}: {output.detach()[-1].size()}")
 
         return hook
 
@@ -41,15 +40,11 @@ def get_mistral_last_token_output_activations(
         prompt, transformer, tokenizer, max_tokens=max_tokens, temperature=temperature
     )
 
-    print(f"Answer of Mistral: {result}")
     for handle in hook_handles:  # cleanup handles
         handle.remove()
 
     for index, activation in last_output_token_per_layer.items():
         assert activation is not None
-        # print(f"---------------------- layer {index} ---------------------------------")
-        # for index_t, tensor in enumerate(activation):
-        # print(f"activation size of token {index_t}: {tensor.size()}")
 
     return last_output_token_per_layer
 
@@ -81,7 +76,6 @@ def get_mistral_linear_activations(
                 return
             else:
                 activations_generated[index].append(output.detach())
-            # print(f"activation at module {module}: {output.detach().size()}")
 
         return hook
 
@@ -115,7 +109,6 @@ def get_mistral_linear_activations(
     )
     assert len(activations_generated) == len(inputs_generated)
 
-    print(f"Answer of Mistral: {result}")
     for handle in activation_hook_handles:  # cleanup handles
         handle.remove()
 
@@ -130,10 +123,7 @@ def get_mistral_linear_activations(
             )
 
     for layer_index, activation_list in activations_generated.items():
-        if len(activation_list) == 0:
-            print(f"list is empty at layer index: {layer_index}")
         activations_generated[layer_index] = torch.stack(activation_list, dim=-1)
-        # print(f"size of activations at layer {layer_index}: {activations[layer_index].size()}")
 
     return activations_generated
 
@@ -145,11 +135,8 @@ def layerwise_batch_entropy(x):
     """
     if x.shape[0] <= 1:
         raise Exception("The batch entropy can only be calculated for |batch| > 1.")
-    # print(f"shape before flatten {x.size()}")
     x = torch.flatten(x, start_dim=1)
-    # print(f"shape after flatten {x.size()}")
     x_std = torch.std(x, dim=0)
-    # print(f"shape of std: {x_std.size()}")
     entropies = 0.5 * torch.log(np.pi * np.e * x_std**2 + 1)
     return torch.mean(entropies)
 
@@ -164,7 +151,6 @@ def compute_lbe(activations: dict):
         lbe[index] = layerwise_batch_entropy(activation)
         lbe[index] = lbe[index].item()  # convert scalar tensor to python float
         assert type(lbe[index]) is float
-        print(f"lbe at index {index}: {lbe[index]}")
 
     return lbe
 
@@ -172,7 +158,6 @@ def compute_lbe(activations: dict):
 def _reindex_pruned_transformer(
     start_index: int, amount_removed: int, transformer: Transformer
 ) -> Transformer:
-    print(f"length of transformer.layers {len(transformer.layers)}")
     for index in range(start_index, len(transformer.layers) + amount_removed, 1):
         if index >= start_index:
             try:
@@ -196,7 +181,6 @@ def _prune_single_layer(lbe: dict, transformer: Transformer):
             max_entropy = (index, token_entropy)
 
     removed_block = transformer.layers.pop(str(max_entropy[0]))
-    print(f"layer with index {max_entropy[0]} removed")
     assert removed_block is not None
     transformer = _reindex_pruned_transformer(max_entropy[0], 1, transformer)
     return transformer, max_entropy[0]
@@ -230,9 +214,6 @@ def _lbe_similarity_pruning(
 
     layers_removed = []
     for index in range(lowest_differential[0] + 1, target_index, 1):
-        print(
-            f"removing layer with index {index}; should be between {lowest_differential[0]} and {target_index}"
-        )
         removed_layer = transformer.layers.pop(str(index))
         assert removed_layer is not None
         layers_removed.append(index)
@@ -348,9 +329,6 @@ def _last_token_arccos_similiarity_pruning(
 
     layers_removed = []
     for index in range(lowest_differential[0], target_index, 1):
-        print(
-            f"removing layer with index {index}; should be between {lowest_differential[0]} and {target_index}"
-        )
         removed_layer = transformer.layers.pop(str(index))
         assert removed_layer is not None
         layers_removed.append(index)
