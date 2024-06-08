@@ -521,6 +521,29 @@ def wandb_log_layers_removed(layers_removed: list, prune_config):
         wandb.log({"indices_removed": wandb_table})
 
 
+def print_mistral_results(
+    max_tokens: int, new_transformer: Transformer, prompts: list, tokenizer: Tokenizer
+):
+    import re
+
+    results, _ = generate(
+        prompts=prompts,
+        model=new_transformer,
+        tokenizer=tokenizer,
+        max_tokens=max_tokens,
+        temperature=0.0,
+    )
+    extract_query_answer_regex = re.compile("\[INST\](.*)\[\/INST\](.*)", flags=re.S)
+    for result in results:
+        regex_result = extract_query_answer_regex.search(result)
+        query = regex_result.group(1)
+        answer = regex_result.group(2)
+        assert len(query) > 0 and len(answer) > 0
+        print(f"debug: {result}")
+        print(f"Query: {query} \n\nAnswer: {answer} \n")
+        print("-------------------------------")
+
+
 def main():
     subset_list = [
         "abstract_algebra",
@@ -600,14 +623,12 @@ def main():
         amount=num_layers_pruned,
         start_at_layer=14,
     )
+    example_prompts = [
+        "[INST]The flame is visible as the skillet sizzles more vigorously, the skillet is stirred and the food is browning. 4 eggs are broken into the skillet. the mixture A. is squeezing in the bottom makes a sour sour substance, on top is made a hot broth. B.is then placed on the side and chopped, the food is grated, soaked, cut, taken out, and stirred again.  C. is allowed to simmer for 6 days till at least 10 degrees fahrenheit.  D. is stirred and left to cook. [/INST]",
+        "[INST]A horse is attached to a cart that is at rest behind it. Which force, or combination of forces, explains how the horse-cart system can accelerate from rest? A. The forward static friction force of the ground on the horse is greater than any friction forces acting backward on the cart, providing a forward acceleration. B. The forward force of the horse on the cart is greater than the backward force of the cart on the horse, providing a forward acceleration. C. The force of the horse’s muscles on the rest of the horse-cart system provides the necessary acceleration.  D. The upward normal force of the ground on the horse is greater than the horse’s weight, providing an upward acceleration.[/INST]",
+    ]
     wandb_log_layers_removed(layers_removed, prune_config)
-    result, _ = generate(
-        prompts=prompt,
-        model=new_transformer,
-        tokenizer=tokenizer,
-        max_tokens=max_tokens,
-        temperature=0.0,
-    )
+    print_mistral_results(max_tokens, new_transformer, example_prompts, tokenizer)
     eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, tokenizer)
 
 
