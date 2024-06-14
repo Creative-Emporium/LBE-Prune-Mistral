@@ -365,6 +365,27 @@ def prune_last_token_cosine_similarity(
     return transformer, layers_removed
 
 
+def prune_index_list_block(transformer: Transformer, index_list: list):
+    """prune layers with specific consecutive indices from network"""
+    assert sorted(index_list) == list(
+        range(min(index_list), max(index_list) + 1)
+    )  # check if indices are consecutive
+    layers_removed = []
+    for index in index_list:
+        assert isinstance(index, int)
+        assert 32 > index >= 0
+        removed_layer = transformer.layers.pop(str(index))
+        assert removed_layer is not None
+        layers_removed.append(index)
+
+    transformer_reindex = _reindex_pruned_transformer(
+        start_index=min(index_list),
+        amount_removed=len(index_list),
+        transformer=transformer,
+    )
+    return transformer_reindex, layers_removed
+
+
 def fetch_mmlu_batch(batch_size: int, subset_list: list):
     """
     fetch questions from mmlu dataset, fetches batch_size amount of questions
@@ -632,7 +653,7 @@ def main():
         "[INST]Please summarize the following text in 3 sentences: We showed some alternatives to Layer-wise pruning in Section 2.2. We showed approaches such as Wanda Sun et al. (2023) and SparseGPT Frantar and Alistarh (2023), which introduce un-structured sparsity into the model. A possible problem with unstructured sparsity is that it can interfere with optimizations introduced by a large number of libraries implementing sparse matrix multiplications Wilkinson et al. (2023). In order to avoid this problem, we decided to develop a Layer-wise pruning approach instead. Furthermore, SparseGPT ran their experiments on Bloom Le Scao et al. (2023) and OPT Zhang et al. (2022). These models are around 175B parameters large, therefore more than 20 times the size of Mistral 7B Jiang et al. (2023). Since our goal is to make LLMs more accessible to a broader audience, we decided to build on approaches (such as Gromov et al. (2024)) which demonstrably work on smaller transformer models also.[/INST]"
     ]
     wandb_log_layers_removed(layers_removed, prune_config)
-    print_mistral_results(max_tokens, new_transformer, example_prompts, tokenizer)
+    print_mistral_results(max_tokens, new_transformer, example_mmlu_prompts, tokenizer)
     eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, tokenizer)
 
 
