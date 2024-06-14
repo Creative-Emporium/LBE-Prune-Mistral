@@ -262,7 +262,7 @@ def prune_lbe_similarity(
     prompt: list,
     max_tokens: int,
     amount: int = 2,
-    start_at_layer=16,
+    start_at_layer=14,
 ):
     activations = get_mistral_linear_activations(
         tokenizer=tokenizer,
@@ -347,7 +347,7 @@ def prune_last_token_cosine_similarity(
     prompt: list,
     max_tokens: int,
     amount: int = 2,
-    start_at_layer=16,
+    start_at_layer=14,
 ):
     """implements approach by paper The Unreasonable Ineffectiveness of the Deeper Layers by Gromov et al"""
     last_token_per_layer = get_mistral_last_token_output_activations(
