@@ -429,6 +429,12 @@ def parse_args() -> argparse.Namespace:
         help="how many tokens Mistral should generate at most on each request",
     )
     parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.0,
+        help="temperature parameter of mistral model: controls how deterministic the model behaves; temperature of 1.0 causes the model to pick more tokens with low probability",
+    )
+    parser.add_argument(
         "--model_path",
         type=str,
         default="model_weights/mistral-7B-v0.2-instruct",
@@ -511,7 +517,7 @@ def eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, toke
     pruned_model_eval = PrunedMistral(
         model=new_transformer,
         tokenizer=tokenizer,
-        temperature=0.0,
+        temperature=prune_config.temperature,
         max_tokens=max_tokens,
     )
     benchmark = MMLU()
@@ -525,6 +531,7 @@ def eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, toke
                 "all tasks accuracy": all_tasks_acc,
                 "subtask accuracy": tasks_acc_table,
                 "layers removed": num_layers_pruned,
+                "temperature": prune_config.temperature,
             }
         )
 
