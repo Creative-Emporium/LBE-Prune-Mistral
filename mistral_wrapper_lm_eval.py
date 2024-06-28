@@ -40,6 +40,24 @@ class PrunedMistral(DeepEvalBaseLLM):
             answer = " "  # return non-zero string to avoid crashes during eval
         return answer
 
+    def __split_prompt(self, prompt: str):
+        """splits prompt into subparts;
+        first element should be header (to extract task),
+        last element should be actual question for model
+        """
+        pass
+
+    def __extract_task_from_prompt_header(self, header: str):
+        import re
+
+        extract_task_regex = re.compile(
+            "The following are multiple choice questions \(with answers\) about ([a-zA-Z ]+)"
+        )
+        regex_result = extract_task_regex.search(header)
+        task = regex_result.group(1)
+        assert len(task) > 0
+        return task.replace(" ", "_")
+
     async def a_generate(self, prompt: str) -> str:
         return self.generate(prompt=prompt)
 
