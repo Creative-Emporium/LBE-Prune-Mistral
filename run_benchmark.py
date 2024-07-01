@@ -11,6 +11,14 @@ from main import generate
 from mistral.cache import RotatingBufferCache
 from mistral.model import Transformer
 from mistral.tokenizer import Tokenizer
+import warnings
+
+warnings.warn(
+    "This module is deprecated and will be removed in a future version. "
+    "Please use the deep_eval library for evaluating instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 def _construct_mmlu_prompt(
