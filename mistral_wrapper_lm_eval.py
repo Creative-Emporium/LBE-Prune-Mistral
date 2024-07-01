@@ -7,6 +7,33 @@ from mistral.model import Transformer
 from mistral.tokenizer import Tokenizer
 
 
+def extract_task_from_prompt_header(header: str) -> MMLUTask:
+    import re
+
+    regex_str = (
+        "The following are multiple choice questions "
+        + re.escape("(with answers)")
+        + " about ([a-zA-Z ]+)"
+    )
+    extract_task_regex = re.compile(regex_str)
+    regex_result = extract_task_regex.search(header)
+    task = regex_result.group(1)
+    assert len(task) > 0
+    task_formatted = task.replace(" ", "_")
+    return MMLUTask(task_formatted)
+
+
+def split_prompt(prompt: str):
+    """splits prompt into subparts;
+    first element should be header (to extract task),
+    last element should be actual question for model
+    """
+    all_splits = prompt.split(sep="\n\n", maxsplit=7)
+    assert len(all_splits) == 7
+    assert all(split is not None for split in all_splits)
+    return all_splits
+
+
 class PrunedMistral(DeepEvalBaseLLM):
     def __init__(
         self,
@@ -38,31 +65,6 @@ class PrunedMistral(DeepEvalBaseLLM):
         if len(answer) == 0:
             answer = " "  # return non-zero string to avoid crashes during eval
         return answer
-
-    def split_prompt(self, prompt: str):
-        """splits prompt into subparts;
-        first element should be header (to extract task),
-        last element should be actual question for model
-        """
-        all_splits = prompt.split(sep="\n\n", maxsplit=7)
-        assert len(all_splits) == 7
-        assert all(split is not None for split in all_splits)
-        return all_splits
-
-    def extract_task_from_prompt_header(self, header: str) -> MMLUTask:
-        import re
-
-        regex_str = (
-            "The following are multiple choice questions "
-            + re.escape("(with answers)")
-            + " about ([a-zA-Z ]+)"
-        )
-        extract_task_regex = re.compile(regex_str)
-        regex_result = extract_task_regex.search(header)
-        task = regex_result.group(1)
-        assert len(task) > 0
-        task_formatted = task.replace(" ", "_")
-        return MMLUTask(task_formatted)
 
     async def a_generate(self, prompt: str) -> str:
         return self.generate(prompt=prompt)
