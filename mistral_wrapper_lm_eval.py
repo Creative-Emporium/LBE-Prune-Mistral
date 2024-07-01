@@ -23,7 +23,7 @@ def extract_task_from_prompt_header(header: str) -> MMLUTask:
     return MMLUTask(task_formatted)
 
 
-def split_prompt(prompt: str):
+def split_prompt(prompt: str) -> list:
     """splits prompt into subparts;
     first element should be header (to extract task),
     last element should be actual question for model
@@ -46,6 +46,7 @@ class PrunedMistral(DeepEvalBaseLLM):
         self.tokenizer = tokenizer
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.response_per_subtask = {}
 
     def load_model(self):
         return self.model
@@ -64,10 +65,20 @@ class PrunedMistral(DeepEvalBaseLLM):
         answer = answer.strip()
         if len(answer) == 0:
             answer = " "  # return non-zero string to avoid crashes during eval
+        prompt_splits = split_prompt(prompt)  # needed to extract header from prompt
+        header = prompt_splits[0]
+        subtask = extract_task_from_prompt_header(header)
+        self.save_response(task=subtask, response=answer)
         return answer
 
     async def a_generate(self, prompt: str) -> str:
         return self.generate(prompt=prompt)
+
+    def save_response(self, task: MMLUTask, response: str):
+        if task not in self.response_per_subtask:
+            self.response_per_subtask[task] = [response]
+        else:
+            self.response_per_subtask[task].append(response)
 
     def get_model_name(self):
         return "Pruned Mistral 7B"
