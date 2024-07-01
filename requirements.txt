@@ -1,3 +1,4 @@
+pytest
 fire
 sentencepiece
 torch>=2.1.0

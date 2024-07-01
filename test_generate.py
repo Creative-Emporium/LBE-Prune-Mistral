@@ -49,15 +49,21 @@ def test_generation():
     tokenizer = DebugTokenizer()
 
     # for attempt in range(10):
-    toks, all_logprobs_old = generate(sequences, model, tokenizer, max_tokens=7)
-    toks = [" ".join(r.split(" ")[1:]) for r in toks] # Remove BOS
-    generated, all_logprobs_new = generate(toks, model, tokenizer, max_tokens=0)
+    toks, all_logprobs_old = generate(
+        sequences, model, tokenizer, max_tokens=7, temperature=0.0
+    )
+    toks = [" ".join(r.split(" ")[1:]) for r in toks]  # Remove BOS
+    generated, all_logprobs_new = generate(
+        toks, model, tokenizer, max_tokens=0, temperature=0.0
+    )
     assert generated == []
-    
+
     # Verify that logprobs are the same
     assert len(sequences) == len(all_logprobs_old) == len(all_logprobs_new)
     for lp_old, lp_new in zip(all_logprobs_old, all_logprobs_new):
-        assert all([abs(x - y) < 1e-5 for x, y in zip(lp_old, lp_new)]), f"\n{lp_old}\n{lp_new}"
+        assert all(
+            [abs(x - y) < 1e-5 for x, y in zip(lp_old, lp_new)]
+        ), f"\n{lp_old}\n{lp_new}"
 
     print("All tests passed.")
 
@@ -65,7 +71,10 @@ def test_generation():
 def test_chunks():
     torch.manual_seed(42)
 
-    sequences = [" ".join([str(i) for i in range(7)]), " ".join([str(i) for i in range(9, 0, -1)])]
+    sequences = [
+        " ".join([str(i) for i in range(7)]),
+        " ".join([str(i) for i in range(9, 0, -1)]),
+    ]
     args = ModelArgs(
         dim=512,
         n_layers=1,
@@ -82,14 +91,20 @@ def test_chunks():
     tokenizer = DebugTokenizer()
 
     # for attempt in range(10):
-    toks, all_logprobs_old = generate(sequences, model, tokenizer, max_tokens=8)
-    toks = [" ".join(r.split(" ")[1:]) for r in toks] # Remove BOS
-    generated, all_logprobs_new = generate(toks, model, tokenizer, max_tokens=0, chunk_size=5)
+    toks, all_logprobs_old = generate(
+        sequences, model, tokenizer, max_tokens=8, temperature=0.0
+    )
+    toks = [" ".join(r.split(" ")[1:]) for r in toks]  # Remove BOS
+    generated, all_logprobs_new = generate(
+        toks, model, tokenizer, max_tokens=0, chunk_size=5, temperature=0.0
+    )
     assert len(generated) == 0
 
     for lp_old, lp_new in zip(all_logprobs_old, all_logprobs_new):
-        assert all([abs(x - y) < 1e-5 for x, y in zip(lp_old, lp_new)]), f"\n{lp_old}\n{lp_new}"
-    
+        assert all(
+            [abs(x - y) < 1e-5 for x, y in zip(lp_old, lp_new)]
+        ), f"\n{lp_old}\n{lp_new}"
+
 
 if __name__ == "__main__":
     test_generation()
