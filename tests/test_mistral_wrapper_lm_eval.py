@@ -21,6 +21,13 @@ def wrapper(model_path: str):
     )
 
 
+@pytest.fixture()
+def test_prompt():
+    with open("benchmark_prompts/high_school_european_history_prompt.txt", "r") as f:
+        prompt = f.read()
+    return prompt
+
+
 @pytest.mark.parametrize(
     "input,expected",
     [
@@ -37,3 +44,11 @@ def test_extract_task_from_prompt_header(
     )
     result = wrapper.extract_task_from_prompt_header(header=prompt_header)
     assert result == expected
+
+
+def test_split_prompts(wrapper, test_prompt):
+    splits = wrapper.split_prompt(test_prompt)
+    assert (
+        splits[0]
+        == "The following are multiple choice questions (with answers) about high school european history."
+    )

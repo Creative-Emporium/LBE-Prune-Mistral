@@ -26,10 +26,6 @@ class PrunedMistral(DeepEvalBaseLLM):
     def generate(self, prompt: str) -> str:
         model = self.load_model()
         final_prompt = f"[INST]{prompt}[/INST]"
-        from pprint import pprint
-
-        pprint(prompt)
-
         result, _ = generate(
             prompts=[final_prompt],
             model=model,
@@ -48,14 +44,20 @@ class PrunedMistral(DeepEvalBaseLLM):
         first element should be header (to extract task),
         last element should be actual question for model
         """
-        pass
+        all_splits = prompt.split(sep="\n\n", maxsplit=7)
+        assert len(all_splits) == 7
+        assert all(split is not None for split in all_splits)
+        return all_splits
 
     def extract_task_from_prompt_header(self, header: str) -> MMLUTask:
         import re
 
-        extract_task_regex = re.compile(
-            "The following are multiple choice questions \(with answers\) about ([a-zA-Z ]+)"
+        regex_str = (
+            "The following are multiple choice questions "
+            + re.escape("(with answers)")
+            + " about ([a-zA-Z ]+)"
         )
+        extract_task_regex = re.compile(regex_str)
         regex_result = extract_task_regex.search(header)
         task = regex_result.group(1)
         assert len(task) > 0
