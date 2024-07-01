@@ -43,14 +43,14 @@ class PrunedMistral(DeepEvalBaseLLM):
             answer = " "  # return non-zero string to avoid crashes during eval
         return answer
 
-    def __split_prompt(self, prompt: str):
+    def split_prompt(self, prompt: str):
         """splits prompt into subparts;
         first element should be header (to extract task),
         last element should be actual question for model
         """
         pass
 
-    def __extract_task_from_prompt_header(self, header: str) -> str:
+    def extract_task_from_prompt_header(self, header: str) -> str:
         import re
 
         extract_task_regex = re.compile(

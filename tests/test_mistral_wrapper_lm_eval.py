@@ -1,0 +1,38 @@
+import pytest
+
+from mistral.model import Transformer
+from mistral.tokenizer import Tokenizer
+from mistral_wrapper_lm_eval import PrunedMistral
+from pathlib import Path
+
+
+@pytest.fixture()
+def model_path():
+    return "../model_weights/mistral-7B-v0.2-instruct"
+
+
+@pytest.fixture()
+def wrapper(model_path: str):
+    tokenizer = Tokenizer(str(Path(model_path) / "tokenizer.model"))
+    transformer = Transformer.from_folder(Path(model_path), max_batch_size=8)
+    return PrunedMistral(
+        model=transformer, tokenizer=tokenizer, temperature=0.0, max_tokens=20
+    )
+
+
+@pytest.mark.parametrize(
+    "input,expected",
+    [
+        ("high school geography", "high_school_geography"),
+        ("human aging", "human_aging"),
+        ("management", "management"),
+    ],
+)
+def test_extract_task_from_prompt_header(
+    wrapper: PrunedMistral, input: str, expected: str
+):
+    prompt_header = (
+        "The following are multiple choice questions (with answers) about " + input
+    )
+    result = wrapper.extract_task_from_prompt_header(header=prompt_header)
+    assert result == expected
