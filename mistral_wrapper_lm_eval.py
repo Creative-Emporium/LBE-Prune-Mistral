@@ -26,6 +26,9 @@ class PrunedMistral(DeepEvalBaseLLM):
     def generate(self, prompt: str) -> str:
         model = self.load_model()
         final_prompt = f"[INST]{prompt}[/INST]"
+        from pprint import pprint
+
+        pprint(prompt)
 
         result, _ = generate(
             prompts=[final_prompt],
@@ -47,7 +50,7 @@ class PrunedMistral(DeepEvalBaseLLM):
         """
         pass
 
-    def __extract_task_from_prompt_header(self, header: str):
+    def __extract_task_from_prompt_header(self, header: str) -> str:
         import re
 
         extract_task_regex = re.compile(
