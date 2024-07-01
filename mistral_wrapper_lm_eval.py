@@ -1,6 +1,6 @@
 import torch
 from deepeval.models.base_model import DeepEvalBaseLLM
-
+from deepeval.benchmarks.tasks import MMLUTask
 from main import generate
 from mistral.cache import RotatingBufferCache
 from mistral.model import Transformer
@@ -50,7 +50,7 @@ class PrunedMistral(DeepEvalBaseLLM):
         """
         pass
 
-    def extract_task_from_prompt_header(self, header: str) -> str:
+    def extract_task_from_prompt_header(self, header: str) -> MMLUTask:
         import re
 
         extract_task_regex = re.compile(
@@ -59,7 +59,8 @@ class PrunedMistral(DeepEvalBaseLLM):
         regex_result = extract_task_regex.search(header)
         task = regex_result.group(1)
         assert len(task) > 0
-        return task.replace(" ", "_")
+        task_formatted = task.replace(" ", "_")
+        return MMLUTask(task_formatted)
 
     async def a_generate(self, prompt: str) -> str:
         return self.generate(prompt=prompt)

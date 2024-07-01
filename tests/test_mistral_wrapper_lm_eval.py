@@ -1,5 +1,6 @@
 import pytest
 
+from deepeval.benchmarks.mmlu.task import MMLUTask
 from mistral.model import Transformer
 from mistral.tokenizer import Tokenizer
 from mistral_wrapper_lm_eval import PrunedMistral
@@ -8,7 +9,7 @@ from pathlib import Path
 
 @pytest.fixture()
 def model_path():
-    return "../model_weights/mistral-7B-v0.2-instruct"
+    return "model_weights/mistral-7B-v0.2-instruct"
 
 
 @pytest.fixture()
@@ -23,9 +24,9 @@ def wrapper(model_path: str):
 @pytest.mark.parametrize(
     "input,expected",
     [
-        ("high school geography", "high_school_geography"),
-        ("human aging", "human_aging"),
-        ("management", "management"),
+        ("high school geography", MMLUTask.HIGH_SCHOOL_GEOGRAPHY),
+        ("human aging", MMLUTask.HUMAN_AGING),
+        ("management", MMLUTask.MANAGEMENT),
     ],
 )
 def test_extract_task_from_prompt_header(
