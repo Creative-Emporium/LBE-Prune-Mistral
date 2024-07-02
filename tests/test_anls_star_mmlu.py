@@ -16,6 +16,14 @@ def ground_truth_getter() -> GroundTruthGetterMMLU:
     return GroundTruthGetterMMLU()
 
 
+@pytest.fixture()
+def single_ground_truth(
+    task: MMLUTask, ground_truth_getter: GroundTruthGetterMMLU
+) -> Golden:
+    ground_truths: list = ground_truth_getter.get_ground_truths_task(task)
+    return ground_truths[0]
+
+
 def test_get_ground_truths_task(
     ground_truth_getter: GroundTruthGetterMMLU, task: MMLUTask
 ):
@@ -24,3 +32,23 @@ def test_get_ground_truths_task(
     assert (
         len(ground_truths) == 165
     )  # size of test split for HIGH_SCHOOL_EUROPEAN_HISTORY
+
+
+def test_extract_ground_truth(
+    ground_truth_getter: GroundTruthGetterMMLU, single_ground_truth: Golden
+):
+    expected_label: str = single_ground_truth.expected_output
+    gt_label_with_answer: str = ground_truth_getter.extract_ground_truth(
+        golden=single_ground_truth
+    )
+    import re
+
+    regex_expr = re.compile(
+        r"([A-D]). ([a-zA-Z\d ]+)"
+    )  # first group should match answer label, 2nd group should match answer text
+    regex_result = regex_expr.search(gt_label_with_answer)
+    extracted_label = regex_result.group(1)
+    assert extracted_label == expected_label
+
+    extracted_answer = regex_result.group(2)
+    assert len(extracted_answer) > 0
