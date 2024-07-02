@@ -1,7 +1,6 @@
 import pytest
 
 from anls_star_mmlu import AnlsStarMMLUEvaluator, GroundTruthGetterMMLU
-from deepeval.benchmarks.mmlu.mmlu import MMLU
 from deepeval.benchmarks.mmlu.mmlu import Golden
 from deepeval.benchmarks.mmlu.task import MMLUTask
 
@@ -17,11 +16,11 @@ def ground_truth_getter() -> GroundTruthGetterMMLU:
 
 
 @pytest.fixture()
-def single_ground_truth(
+def all_ground_truths(
     task: MMLUTask, ground_truth_getter: GroundTruthGetterMMLU
-) -> Golden:
+) -> list:
     ground_truths: list = ground_truth_getter.get_ground_truths_task(task)
-    return ground_truths[0]
+    return ground_truths
 
 
 def test_get_ground_truths_task(
@@ -35,20 +34,21 @@ def test_get_ground_truths_task(
 
 
 def test_extract_ground_truth(
-    ground_truth_getter: GroundTruthGetterMMLU, single_ground_truth: Golden
+    ground_truth_getter: GroundTruthGetterMMLU, all_ground_truths: list
 ):
-    expected_label: str = single_ground_truth.expected_output
-    gt_label_with_answer: str = ground_truth_getter.extract_ground_truth(
-        golden=single_ground_truth
-    )
-    import re
+    for single_ground_truth in all_ground_truths:
+        expected_label: str = single_ground_truth.expected_output
+        gt_label_with_answer: str = ground_truth_getter.extract_ground_truth(
+            golden=single_ground_truth
+        )
+        import re
 
-    regex_expr = re.compile(
-        r"([A-D]). ([a-zA-Z\d ]+)"
-    )  # first group should match answer label, 2nd group should match answer text
-    regex_result = regex_expr.search(gt_label_with_answer)
-    extracted_label = regex_result.group(1)
-    assert extracted_label == expected_label
+        regex_expr = re.compile(
+            r"([A-D]). ([a-zA-Z\d ]+)"
+        )  # first group should match answer label, 2nd group should match answer text
+        regex_result = regex_expr.search(gt_label_with_answer)
+        extracted_label = regex_result.group(1)
+        assert extracted_label == expected_label
 
-    extracted_answer = regex_result.group(2)
-    assert len(extracted_answer) > 0
+        extracted_answer = regex_result.group(2)
+        assert len(extracted_answer) > 0
