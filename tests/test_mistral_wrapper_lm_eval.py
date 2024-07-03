@@ -1,10 +1,6 @@
 import pytest
 from mistral_wrapper_lm_eval import extract_task_from_prompt_header, split_prompt
 from deepeval.benchmarks.mmlu.task import MMLUTask
-from mistral.model import Transformer
-from mistral.tokenizer import Tokenizer
-from mistral_wrapper_lm_eval import PrunedMistral
-from pathlib import Path
 
 
 @pytest.fixture()
