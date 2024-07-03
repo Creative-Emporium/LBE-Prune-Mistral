@@ -76,6 +76,13 @@ class AnlsStarMMLUEvaluator:
         )  # no need to loop, anls_score supports evaluation on lists directly (avg computed as well)
         return self.anls_scores_task[task]
 
-    def compute_anls_star_average(self):
+    def compute_anls_star_average(self) -> (int, dict):
         """computes anls_star average over all subtasks"""
-        pass
+        subtasks: list = list(self.predictions.keys())
+        n_subtasks: int = len(subtasks)
+        added_anls = 0
+        for task in subtasks:
+            added_anls += self.compute_anls_star_subtask(task=task)
+        avg_anls = added_anls / n_subtasks
+        assert len(self.anls_scores_task.keys()) == len(self.predictions.keys())
+        return avg_anls, self.anls_scores_task

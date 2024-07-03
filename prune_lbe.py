@@ -513,6 +513,8 @@ def choose_algorithm(
 def eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, tokenizer):
     from deepeval.benchmarks import MMLU
     from mistral_wrapper_lm_eval import PrunedMistral
+    from anls_star_mmlu import AnlsStarMMLUEvaluator
+    from pandas import DataFrame
 
     pruned_model_eval = PrunedMistral(
         model=new_transformer,
@@ -525,11 +527,19 @@ def eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, toke
     all_tasks_acc = benchmark.overall_score
     tasks_acc_df = benchmark.task_scores
     tasks_acc_table = wandb.Table(dataframe=tasks_acc_df)
+    responses = pruned_model_eval.get_responses()
+    anls_evaluator = AnlsStarMMLUEvaluator(predictions=responses)
+    anls_avg, anls_subtask_dict = anls_evaluator.compute_anls_star_average()
+    anls_subtask_df = DataFrame.from_dict(data=anls_subtask_dict, orient="columns")
+    anls_subtask_table = wandb.Table(dataframe=anls_subtask_df)
+    print(f"ANLS*  avg accuracy: {anls_avg}")
     if prune_config.log_wandb:
         wandb.log(
             {
                 "all tasks accuracy": all_tasks_acc,
                 "subtask accuracy": tasks_acc_table,
+                "all tasks anls_star": anls_avg,
+                "subtask anls_star": anls_subtask_table,
                 "layers removed": num_layers_pruned,
                 "temperature": prune_config.temperature,
             }
