@@ -20,16 +20,16 @@ def test_prompt():
 
 
 @pytest.mark.parametrize(
-    "input,expected",
+    "input_text,expected",
     [
         ("high school geography", MMLUTask.HIGH_SCHOOL_GEOGRAPHY),
         ("human aging", MMLUTask.HUMAN_AGING),
         ("management", MMLUTask.MANAGEMENT),
     ],
 )
-def test_extract_task_from_prompt_header(input: str, expected: str):
+def test_extract_task_from_prompt_header(input_text: str, expected: str):
     prompt_header = (
-        "The following are multiple choice questions (with answers) about " + input
+        "The following are multiple choice questions (with answers) about " + input_text
     )
     result = extract_task_from_prompt_header(header=prompt_header)
     assert result == expected
