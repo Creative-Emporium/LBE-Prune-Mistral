@@ -62,10 +62,19 @@ class GroundTruthGetterMMLU:
 class AnlsStarMMLUEvaluator:
     def __init__(self, predictions: dict):
         self.predictions = predictions
+        self.gt_getter = GroundTruthGetterMMLU()
+        self.anls_scores_task = {}
 
     def compute_anls_star_subtask(self, task: MMLUTask):
-        """computes anls_star metric for a subtask of MMLU using ground truth string and predicted answer string"""
-        pass
+        """computes anls_star metric for a subtask of MMLU using ground truth strings and predicted answer strings"""
+        ground_truths_dict: dict = self.gt_getter.get_extracted_ground_truths([task])
+        ground_truths_task: list = ground_truths_dict[task]
+        predictions_task: list = self.predictions[task]
+        assert len(ground_truths_task) == len(predictions_task)
+        self.anls_scores_task[task] = anls_score(
+            gt=ground_truths_task, pred=predictions_task
+        )  # no need to loop, anls_score supports evaluation on lists directly (avg computed as well)
+        return self.anls_scores_task[task]
 
     def compute_anls_star_average(self):
         """computes anls_star average over all subtasks"""

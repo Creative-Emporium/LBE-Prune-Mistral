@@ -80,5 +80,9 @@ class PrunedMistral(DeepEvalBaseLLM):
         else:
             self.response_per_subtask[task].append(response)
 
+    def get_responses(self):
+        assert len(self.response_per_subtask) > 0
+        return self.response_per_subtask
+
     def get_model_name(self):
         return "Pruned Mistral 7B"
