@@ -10,10 +10,6 @@ def task() -> MMLUTask:
     return MMLUTask.HIGH_SCHOOL_EUROPEAN_HISTORY
 
 
-HIGH_SCHOOL_EUROPEAN_TEST_SET_SIZE = 165
-COLLEGE_MATHEMATICS_TEST_SET_SIZE = 100
-
-
 @pytest.fixture()
 def ground_truth_getter() -> GroundTruthGetterMMLU:
     return GroundTruthGetterMMLU()
@@ -27,14 +23,18 @@ def all_ground_truths(
     return ground_truths
 
 
+@pytest.fixture()
+def task_size(task: MMLUTask, ground_truth_getter: GroundTruthGetterMMLU) -> int:
+    ground_truths: list = ground_truth_getter.get_ground_truths_task(task)
+    return len(ground_truths)
+
+
 def test_get_ground_truths_task(
-    ground_truth_getter: GroundTruthGetterMMLU, task: MMLUTask
+    ground_truth_getter: GroundTruthGetterMMLU, task: MMLUTask, task_size: int
 ):
     ground_truths: list = ground_truth_getter.get_ground_truths_task(task)
     assert all(type(gt) is Golden for gt in ground_truths)
-    assert (
-        len(ground_truths) == HIGH_SCHOOL_EUROPEAN_TEST_SET_SIZE
-    )  # size of test split for HIGH_SCHOOL_EUROPEAN_HISTORY
+    assert len(ground_truths) == task_size
 
 
 def test_extract_ground_truth(
@@ -59,12 +59,12 @@ def test_extract_ground_truth(
 
 
 def test_get_extracted_ground_truths(
-    ground_truth_getter: GroundTruthGetterMMLU, task: MMLUTask
+    ground_truth_getter: GroundTruthGetterMMLU, task: MMLUTask, task_size: int
 ):
     ground_truths_per_task = ground_truth_getter.get_extracted_ground_truths(
         tasks=[task]
     )
-    assert len(ground_truths_per_task[task]) == HIGH_SCHOOL_EUROPEAN_TEST_SET_SIZE
+    assert len(ground_truths_per_task[task]) == task_size
     import re
 
     regex_answer_format = re.compile(r"[A-D]" + re.escape(r".") + r".+")
