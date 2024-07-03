@@ -11,6 +11,7 @@ def task() -> MMLUTask:
 
 
 HIGH_SCHOOL_EUROPEAN_TEST_SET_SIZE = 165
+COLLEGE_MATHEMATICS_TEST_SET_SIZE = 100
 
 
 @pytest.fixture()
@@ -47,7 +48,7 @@ def test_extract_ground_truth(
         import re
 
         regex_expr = re.compile(
-            r"([A-D]). ([a-zA-Z\d ]+)"
+            r"([A-D])" + re.escape(r".") + r"(.+)"
         )  # first group should match answer label, 2nd group should match answer text
         regex_result = regex_expr.search(gt_label_with_answer)
         extracted_label = regex_result.group(1)
@@ -66,7 +67,7 @@ def test_get_extracted_ground_truths(
     assert len(ground_truths_per_task[task]) == HIGH_SCHOOL_EUROPEAN_TEST_SET_SIZE
     import re
 
-    regex_answer_format = re.compile(r"[A-D]. [a-zA-Z\d ]+")
+    regex_answer_format = re.compile(r"[A-D]" + re.escape(r".") + r".+")
     assert all(
         regex_answer_format.match(answer) for answer in ground_truths_per_task[task]
     )

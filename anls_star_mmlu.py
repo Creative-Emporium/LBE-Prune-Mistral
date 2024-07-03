@@ -23,7 +23,7 @@ class GroundTruthGetterMMLU:
         answers_with_labels: list = parsed_result[-5:-1]
         import re
 
-        regex_answer_format = re.compile(r"[A-D]. [a-zA-Z\d ]+")
+        regex_answer_format = re.compile(r"[A-D]" + re.escape(r".") + r".+")
         assert all(regex_answer_format.match(answer) for answer in answers_with_labels)
         correct_label = golden.expected_output
         index: int = self.__get_list_index_from_label(correct_label)
