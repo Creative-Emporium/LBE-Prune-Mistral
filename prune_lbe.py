@@ -530,9 +530,16 @@ def eval_mmlu(max_tokens, new_transformer, num_layers_pruned, prune_config, toke
     responses = pruned_model_eval.get_responses()
     anls_evaluator = AnlsStarMMLUEvaluator(predictions=responses)
     anls_avg, anls_subtask_dict = anls_evaluator.compute_anls_star_average()
-    anls_subtask_df = DataFrame.from_dict(data=anls_subtask_dict, orient="columns")
-    anls_subtask_table = wandb.Table(dataframe=anls_subtask_df)
     print(f"ANLS*  avg accuracy: {anls_avg}")
+    anls_subtask_dict_converted = {
+        key.name: value for key, value in anls_subtask_dict.items()
+    }
+    anls_subtask_df = DataFrame.from_dict(
+        data=anls_subtask_dict_converted, orient="index", columns=["ANLS_STAR_VAL"]
+    )
+    anls_subtask_df.reset_index(inplace=True)
+    anls_subtask_df.rename(columns={"index": "SUBTASK"}, inplace=True)
+    anls_subtask_table = wandb.Table(dataframe=anls_subtask_df)
     if prune_config.log_wandb:
         wandb.log(
             {
